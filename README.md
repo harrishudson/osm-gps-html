@@ -32,8 +32,9 @@ experiment that turned into something genuinely useful.
 - **Route line trimming** -- the route line consumes behind you as you drive,
   like a real GPS
 - **Turn list drawer** showing all manoeuvres with distances
-- **Screen stay-awake** -- three layered methods (WakeLock API, silent video
-  loop, DeviceOrientation subscription) keep the screen on while navigating
+- **Screen stay-awake** -- four layered methods (WakeLock API, silent video
+  loop, DeviceOrientation subscription, Web Audio keep-alive) keep the screen
+  on while navigating, including on older iPhones
 
 ---
 
@@ -78,7 +79,8 @@ calculate the route.
   (this is also what warms up the audio on iPhone -- if you hear it, speech
   is working).
 - The **route line** trims behind you as you move, so only the remaining
-  portion is highlighted.
+  portion is highlighted in full brightness. A faint ghost of the full route
+  remains visible so you can see the overall path ahead.
 - If you drift more than 80 metres off the route, it automatically
   recalculates from your current position.
 - Tap **≡** (bottom-left) to open the full turn-by-turn list. The speed
@@ -98,9 +100,10 @@ calculate the route.
 
 The circle at the bottom-left shows your current speed in km/h. Below it, a
 round red-bordered sign shows the posted speed limit for the current road
-segment (inferred from road type -- see limitations below). The circle border
-flashes red if you exceed the limit by more than 3 km/h (adjustable in
-config).
+segment. The limit is inferred from road type using three signals: the OSRM
+intersection class, the step route reference (e.g. M1, A1), and the implied
+speed from OSRM's own routing model. The circle border flashes red if you
+exceed the limit by more than 3 km/h (adjustable in config).
 
 ### School zones
 
@@ -119,10 +122,10 @@ audio session, which is required before navigation speech will work.
 
 ### Limitations to be aware of
 
-- **Speed limits** are inferred from road class (motorway, residential, etc.)
-  using Australian default values. They are not read from live data and will
-  be wrong on roads where the actual limit differs from the class default.
-  Always observe posted signs.
+- **Speed limits** are inferred from road class using Australian default
+  values. They are not read from live signed data and will be wrong on roads
+  where the actual limit differs from the class default. Always observe
+  posted signs.
 - **Routing** uses the public OSRM demo server which is intended for testing,
   not production use. For a long road trip it will generally work well, but
   it can be slow or unavailable under heavy load.
@@ -131,6 +134,8 @@ audio session, which is required before navigation speech will work.
   current version.
 
 ---
+
+## How to use it
 
 ### Option 1 -- Open directly in a browser (simplest)
 
@@ -236,7 +241,7 @@ Example walking mode:
 | `NOMINATIM_EMAIL` | 429 | (placeholder) | Your email for Nominatim identification |
 | `SPEED_GRACE_KMH` | 433 | 3 | Grace km/h above limit before speed display turns red |
 | `REROUTE_COOLDOWN_MS` | 439 | 15000 | Minimum ms between successive re-routes |
-| `SCHOOL_RADIUS_M` | 1889 | 150 | Metres from a school to trigger zone warning |
+| `SCHOOL_RADIUS_M` | 1903 | 150 | Metres from a school to trigger zone warning |
 
 ---
 
@@ -261,8 +266,8 @@ tile provider such as Stadia Maps or MapTiler instead of the OSM tile CDN.
 
 | Browser | Routing | Voice input | Voice output | GPS | Screen wake |
 |---------|---------|-------------|--------------|-----|-------------|
-| Safari (iOS 16.4+) | Yes | Yes | Yes | Yes | Video + DeviceOrientation |
-| Chrome (iOS 17.4+) | Yes | Yes | Yes | Yes | Video + DeviceOrientation |
+| Safari (iOS 16.4+) | Yes | Yes | Yes | Yes | Video + DeviceOrientation + Web Audio |
+| Chrome (iOS 17.4+) | Yes | Yes | Yes | Yes | Video + DeviceOrientation + Web Audio |
 | Chrome (Android) | Yes | Yes (HTTPS) | Yes | Yes | WakeLock API |
 | Chrome (desktop) | Yes | Yes | Yes | Yes | WakeLock API |
 | Safari (macOS) | Yes | Yes | Yes | Yes | WakeLock API |
@@ -341,7 +346,10 @@ application can be built end-to-end through AI-assisted development.
 ---
 
 ## Contributing
-Pull Requests are not currently being accepted.  If you would like to request a change, or find a bug, please raise an issue.  
- 
+
+Pull Requests are not currently being accepted. If you would like to request
+a change, or find a bug, please raise an issue.
+
 ## Donate
+
 [https://harrishudson.com/#sponsor](https://harrishudson.com/#sponsor)

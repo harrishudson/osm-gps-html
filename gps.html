@@ -1299,9 +1299,21 @@ function go(isReroute) {
       stepIdx = 0; lastSpokenIdx = -1;
 
       if (routeLayer) map.removeLayer(routeLayer);
-      routeLayer = L.layerGroup([
-        L.polyline(routeCoords, { color: '#f5a623', weight: 8, opacity: 0.15 }),
-        L.polyline(routeCoords, { color: '#f5a623', weight: 4, opacity: 0.95 })
+      // Very faint full-route underlay -- just enough to show the overall
+      // path ahead without competing with the bright trimmed remainingLayer.
+      // On first load (before GPS updates arrive) this is all that shows,
+      // so we also draw a bright initial line that trimRouteDisplay will
+      // replace on the first GPS position update.
+      routeLayer = L.polyline(routeCoords, {
+        color: '#f5a623', weight: 4, opacity: 0.12
+      }).addTo(map);
+
+      // Draw full-brightness initial route -- replaced by trimRouteDisplay
+      // on first GPS update, ensuring the route always looks vivid on load.
+      if (remainingLayer) map.removeLayer(remainingLayer);
+      remainingLayer = L.layerGroup([
+        L.polyline(routeCoords, { color: '#f5a623', weight: 9, opacity: 0.18 }),
+        L.polyline(routeCoords, { color: '#f5a623', weight: 4, opacity: 1.0 })
       ]).addTo(map);
 
       if (!isReroute) map.fitBounds(L.latLngBounds(routeCoords), { padding: [60,60] });
@@ -1333,17 +1345,41 @@ function go(isReroute) {
 
 // Guess a speed limit from step properties using intersection type heuristics
 function guessLimitFromStep(step) {
-  // OSRM steps have intersections with classes array
+  // OSRM intersection 'classes' only contains: motorway, toll, tunnel,
+  // ferry, restricted -- NOT primary/secondary/residential etc.
+  // So we use multiple signals to infer road type:
+
+  // 1. Check intersection classes for motorway/toll indicators
   if (step.intersections && step.intersections.length) {
     var classes = step.intersections[0].classes || [];
-    for (var k in DEFAULT_LIMITS) {
-      if (classes.indexOf(k) >= 0) return DEFAULT_LIMITS[k];
-    }
     if (classes.indexOf('motorway') >= 0) return DEFAULT_LIMITS['motorway'];
-    if (classes.indexOf('trunk') >= 0)    return DEFAULT_LIMITS['trunk'];
-    if (classes.indexOf('primary') >= 0)  return DEFAULT_LIMITS['primary'];
   }
-  // Final fallback: use 50 (standard Australian urban default)
+
+  // 2. Check step 'ref' field - motorways/highways have route refs (M1, A1, B52 etc)
+  var ref = (step.ref || '').toUpperCase().trim();
+  if (ref) {
+    // Australian motorway refs: M1, M2, M5, M7 etc
+    if (/^M\d/.test(ref))  return DEFAULT_LIMITS['motorway'];
+    // State highways and national highways: A1, B52 etc
+    if (/^(A|N|NH|SH|HW)\d/.test(ref)) return DEFAULT_LIMITS['trunk'];
+    // Numbered routes often primary roads
+    if (/^\d+$/.test(ref)) return DEFAULT_LIMITS['primary'];
+  }
+
+  // 3. Use speed implied by step duration vs distance as a road class proxy.
+  // If OSRM routed this step assuming a high speed, it must be a fast road.
+  var impliedSpeedKmh = (step.duration > 0)
+    ? (step.distance / step.duration) * 3.6
+    : 0;
+  if (impliedSpeedKmh >= 90) return DEFAULT_LIMITS['motorway'];
+  if (impliedSpeedKmh >= 70) return DEFAULT_LIMITS['trunk'];
+  if (impliedSpeedKmh >= 55) return DEFAULT_LIMITS['primary'];
+  if (impliedSpeedKmh >= 45) return DEFAULT_LIMITS['secondary'];
+  if (impliedSpeedKmh >= 30) return DEFAULT_LIMITS['tertiary'];
+  if (impliedSpeedKmh >= 10) return DEFAULT_LIMITS['residential'];
+  if (impliedSpeedKmh > 0)   return DEFAULT_LIMITS['living_street'];
+
+  // 4. Fallback: 50 km/h (standard Australian urban default)
   return 50;
 }
 
@@ -1711,42 +1747,20 @@ function clearAll() {
 
 // =============================================================
 // SCREEN WAKE LOCK
-// Keeps the screen on during navigation.
-// Method 1: WakeLock API  -- Chrome 84+, Edge, Android Chrome,
-//           Safari 16.4+ (but NOT Chrome/Opera on iOS).
-// Method 2: Silent looping video -- the only reliable method
-//           on iOS Safari. iOS will not sleep the screen while
-//           a video is playing. We retry on every touch event
-//           since iOS can pause the video when screen dims.
-// =============================================================
-// =============================================================
-// SCREEN WAKE LOCK
-// Three layered methods, all active simultaneously:
-//
-// Method 1: WakeLock API (Chrome 84+, Edge, Safari 16.4+)
-//           Most reliable when available. Auto re-acquires.
-//
-// Method 2: Silent looping video (iOS Safari fallback)
-//           iOS will not sleep while a video element plays.
-//           Must be started from a user gesture. Re-triggered
-//           on every touch in case iOS pauses it.
-//
-// Method 3: DeviceMotionEvent / DeviceOrientationEvent polling
-//           Subscribing to motion/orientation events tells iOS
-//           the page needs continuous sensor access, which
-//           suppresses the auto-lock timer. Silent, no battery
-//           impact beyond normal sensor polling. Works even
-//           when the other two methods are throttled.
-//
-// All three are belt-and-suspenders: any one working is enough.
+// Four layered methods for maximum compatibility:
+// 1. WakeLock API        -- Chrome 84+, Safari 16.4+, Edge
+// 2. Silent video loop   -- iOS Safari (all versions)
+// 3. DeviceOrientation   -- suppresses iOS auto-lock via sensor subscription
+// 4. Web Audio silence   -- plays inaudible audio on a timer; old iOS
+//                          devices stay awake while AudioContext is active.
+//                          Most reliable fallback for older iPhones.
 // =============================================================
 var wakeLockObj       = null;
 var wakeActive        = false;
 var orientationActive = false;
+var audioCtx          = null;
 
 function initWakeLock() {
-
-  // Try video immediately (will silently fail until first gesture on iOS)
   startVideoWake();
 
   function activateAll() {
@@ -1755,28 +1769,28 @@ function initWakeLock() {
     startVideoWake();
     requestWakeLockAPI();
     startOrientationWake();
+    startAudioWake();
   }
 
-  // Re-check video and orientation on every touch.
-  // iOS can pause the video or drop the sensor subscription silently.
   document.addEventListener('touchstart', function() {
     warmUpSpeech();
     startVideoWake();
     startOrientationWake();
+    startAudioWake();
     if (!wakeActive) activateAll();
   }, { passive: true });
 
   document.addEventListener('click', function() {
     warmUpSpeech();
     startVideoWake();
+    startAudioWake();
     if (!wakeActive) activateAll();
   });
 
-  // Re-acquire everything when page becomes visible again
   document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible') {
       startVideoWake();
-      startOrientationWake();
+      startAudioWake();
       if (window.speechSynthesis && window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
       }
@@ -1795,14 +1809,12 @@ function requestWakeLockAPI() {
       wakeLockObj = lock;
       lock.addEventListener('release', function() {
         wakeLockObj = null;
-        // Auto re-acquire — iOS releases the lock when tab is backgrounded
         if (wakeActive && document.visibilityState === 'visible') {
           setTimeout(requestWakeLockAPI, 500);
         }
       });
     })
     .catch(function(e) {
-      // Silently fail — video + orientation methods are still active
       console.warn('WakeLock API unavailable:', e.message);
     });
 }
@@ -1811,67 +1823,78 @@ function requestWakeLockAPI() {
 function startVideoWake() {
   var v = document.getElementById('noSleepVid');
   if (!v) return;
-  if (v.paused) {
-    v.play().catch(function() {
-      // Autoplay blocked — will retry on next user gesture
-    });
-  }
+  if (v.paused) { v.play().catch(function() {}); }
 }
 
-// Method 3: DeviceOrientation / DeviceMotion event subscription
-// Keeping an active listener prevents iOS from engaging auto-lock
-// because the OS believes the page is consuming live sensor data.
+// Method 3: DeviceOrientation subscription
 function startOrientationWake() {
   if (orientationActive) return;
-
-  // iOS 13+ requires permission for DeviceMotionEvent
   if (typeof DeviceMotionEvent !== 'undefined' &&
       typeof DeviceMotionEvent.requestPermission === 'function') {
-    // requestPermission must be called from a user gesture.
-    // We call it here since startOrientationWake is always called
-    // from a touchstart or click handler.
     DeviceMotionEvent.requestPermission()
       .then(function(state) {
-        if (state === 'granted') {
-          attachOrientationListener();
-        } else {
-          // Permission denied — fall back silently to video + WakeLock
-          console.warn('DeviceMotion permission denied');
-        }
+        if (state === 'granted') attachOrientationListener();
       })
-      .catch(function() {
-        // requestPermission threw (e.g. non-iOS browser) — try direct attach
-        attachOrientationListener();
-      });
+      .catch(function() { attachOrientationListener(); });
   } else {
-    // Non-iOS or older iOS — attach directly (no permission needed)
     attachOrientationListener();
   }
 }
 
 function attachOrientationListener() {
   if (orientationActive) return;
-
-  // Prefer DeviceOrientationEvent (lower battery than motion)
   var eventName = (typeof DeviceOrientationEvent !== 'undefined')
     ? 'deviceorientation'
     : (typeof DeviceMotionEvent !== 'undefined' ? 'devicemotion' : null);
-
   if (!eventName) return;
-
-  // The handler itself does nothing — the subscription is what matters
   function noopHandler() {}
-
   window.addEventListener(eventName, noopHandler, { passive: true });
   orientationActive = true;
-
-  // Belt-and-suspenders: re-attach every 30 seconds in case iOS drops it
   setInterval(function() {
     if (orientationActive) {
       window.removeEventListener(eventName, noopHandler);
       window.addEventListener(eventName, noopHandler, { passive: true });
     }
   }, 30000);
+}
+
+// Method 4: Web Audio silent buffer
+// Plays a near-silent 1-sample audio buffer every 25 seconds.
+// Old iOS devices (pre-WakeLock API) stay awake while an
+// AudioContext is active and audio has recently played.
+function startAudioWake() {
+  if (audioCtx) {
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(function() {});
+    }
+    return;
+  }
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audioCtx = new AC();
+
+    function playSilence() {
+      if (!audioCtx) return;
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(function() {});
+        return;
+      }
+      var buf  = audioCtx.createBuffer(1, 1, 22050);
+      var src  = audioCtx.createBufferSource();
+      src.buffer = buf;
+      var gain = audioCtx.createGain();
+      gain.gain.value = 0.001; // near-silent; some iOS needs non-zero
+      src.connect(gain);
+      gain.connect(audioCtx.destination);
+      src.start(0);
+    }
+
+    playSilence();
+    setInterval(playSilence, 25000);
+  } catch(e) {
+    console.warn('Web Audio wake failed:', e.message);
+  }
 }
 
 // =============================================================
