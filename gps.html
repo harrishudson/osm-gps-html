@@ -1,0 +1,2069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>osm-gps-html</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d0f14; --surface: #161920; --surface2: #1e2230;
+  --border: #2a2f3d; --amber: #f5a623; --amber2: #ff8c00;
+  --green: #4ade80; --blue: #60a5fa; --red: #f87171;
+  --text: #e8eaf0; --muted: #6b7280; --dim: #3a3f50;
+}
+html { height: 100%; overflow: hidden; background: var(--bg); }
+body {
+  font-family: 'Barlow', sans-serif;
+  height: 100svh;
+  height: 100dvh;
+  max-height: 100svh;
+  overflow: hidden !important;
+  color: var(--text);
+  user-select: none;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Map */
+#map { position: absolute; inset: 0; z-index: 0; }
+.leaflet-container { background: #0d0f14 !important; }
+.leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(0.78) saturate(0.6) contrast(0.9); }
+.leaflet-control-zoom { border: none !important; box-shadow: none !important; }
+.leaflet-control-zoom a { background: var(--surface) !important; color: var(--amber) !important; border: 1px solid var(--border) !important; width: 36px !important; height: 36px !important; line-height: 36px !important; font-size: 20px !important; }
+.leaflet-control-attribution { background: rgba(13,15,20,.7) !important; color: var(--muted) !important; font-size: 9px !important; }
+/* Move zoom controls to bottom-right, above the sheet handle (~60px) */
+.leaflet-bottom.leaflet-right { bottom: 68px !important; right: 60px !important; }
+
+/* Top instruction bar */
+#instBar { position: absolute; top: 0; left: 0; right: 0; z-index: 100; pointer-events: none; transform: translateY(-100%); transition: transform 0.35s cubic-bezier(0.4,0,0.2,1); }
+#instBar.show { transform: translateY(0); }
+.inst-inner { background: var(--surface); border-bottom: 2px solid var(--amber); padding: 12px 16px; display: flex; align-items: center; gap: 14px; box-shadow: 0 4px 24px rgba(0,0,0,.5); }
+.inst-arrow { font-size: 2.4rem; line-height: 1; min-width: 44px; text-align: center; color: var(--amber); filter: drop-shadow(0 0 8px var(--amber)); }
+.inst-text { flex: 1; min-width: 0; }
+.inst-action { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; line-height: 1; margin-bottom: 3px; }
+.inst-street { font-family: 'Barlow Condensed', sans-serif; font-size: 1.5rem; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; }
+.inst-dist { font-family: 'Barlow Condensed', sans-serif; font-weight: 600; text-align: right; min-width: 70px; }
+.dn { font-size: 1.8rem; color: var(--amber); line-height: 1; display: block; }
+.du { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.inst-prog { height: 3px; background: var(--border); }
+.inst-prog-fill { height: 100%; background: var(--amber); transition: width .6s; box-shadow: 0 0 8px var(--amber2); }
+
+/* Speed widget - bottom left corner */
+/* My speed circle */
+.speed-circle {
+  width: 74px; height: 74px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 3px solid var(--border);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  box-shadow: 0 2px 14px rgba(0,0,0,.5);
+  transition: border-color .3s, box-shadow .3s;
+}
+.speed-circle.over {
+  border-color: var(--red);
+  box-shadow: 0 0 18px rgba(248,113,113,.5);
+  animation: speedwarn .6s infinite alternate;
+}
+@keyframes speedwarn { from { border-color: var(--red); } to { border-color: #ff0000; } }
+.speed-num {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.7rem; font-weight: 700; line-height: 1;
+  color: var(--text); transition: color .3s;
+}
+.speed-circle.over .speed-num { color: var(--red); }
+.speed-unit {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.58rem; color: var(--muted); letter-spacing: 2px; text-transform: uppercase;
+}
+/* Speed limit sign */
+.limit-sign {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: #fff;
+  border: 4px solid var(--red);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,.5);
+  display: none;
+}
+.limit-sign.show { display: flex; }
+.limit-num {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.2rem; font-weight: 700; color: #111; line-height: 1;
+}
+.limit-lbl {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.5rem; color: #444; letter-spacing: 1px; text-transform: uppercase;
+}
+
+/* Status pills - top right */
+#pills { position: absolute; top: 12px; right: 12px; z-index: 100; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.pill { background: rgba(22,25,32,.88); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px 4px 8px; display: flex; align-items: center; gap: 6px; font-family: 'Barlow Condensed', sans-serif; font-size: .8rem; font-weight: 600; letter-spacing: .5px; backdrop-filter: blur(8px); white-space: nowrap; }
+.pdot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.pdot.on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.pdot.bz  { background: var(--amber); animation: pulse 1s infinite; }
+.pdot.rte { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.pdot.err { background: var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+.plbl { color: var(--muted); } .pval { color: var(--text); }
+
+/* Off-route banner */
+#rerouteBanner { position: absolute; top: 0; left: 0; right: 0; z-index: 300; background: var(--amber2); color: #000; text-align: center; padding: 10px; font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; transform: translateY(-100%); transition: transform .3s; }
+#rerouteBanner.show { transform: translateY(0); }
+
+/* Floating buttons */
+/* Left column: speed widget + floating buttons all centred on same axis.
+   The speed circle is 74px wide. We anchor the column 12px from the left,
+   making the column centre at 12 + 37 = 49px. Buttons (44px wide) sit at
+   left: 49 - 22 = 27px to share the same centre line. */
+#speedWidget {
+  position: absolute;
+  bottom: 170px; left: 12px;
+  z-index: 160;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+#turnsToggle { position: absolute; bottom: 120px; left: 27px; z-index: 160; width: 44px; height: 44px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--dim); color: var(--amber); font-size: 1.1rem; cursor: pointer; display: none; align-items: center; justify-content: center; box-shadow: 0 2px 12px rgba(0,0,0,.4); transition: all .2s; }
+#turnsToggle.show { display: flex; border-color: var(--amber); box-shadow: 0 0 0 2px rgba(245,166,35,0.35), 0 2px 12px rgba(0,0,0,.4); }
+#recenterBtn { position: absolute; bottom: 68px; left: 27px; z-index: 160; width: 44px; height: 44px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 12px rgba(0,0,0,.4); transition: all .2s; }
+#recenterBtn.tracking { color: var(--green); border-color: var(--green); }
+
+/* Turns drawer */
+#turnsDrawer { position: absolute; bottom: 60px; left: 0; right: 0; z-index: 150; background: var(--surface); border-top: 1px solid var(--border); transform: translateY(100%); transition: transform 0.35s cubic-bezier(0.4,0,0.2,1); max-height: 42vh; display: flex; flex-direction: column; }
+#turnsDrawer.show { transform: translateY(0); }
+.turns-hdr { padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.turns-title { font-family: 'Barlow Condensed', sans-serif; font-size: .75rem; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); }
+.turns-stats { font-family: 'Barlow Condensed', sans-serif; font-size: .85rem; font-weight: 600; color: var(--amber); }
+.turns-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 2px 6px; }
+.turns-list { overflow-y: auto; flex: 1; }
+.turn-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .15s; }
+.turn-row:last-child { border-bottom: none; }
+.turn-row:hover { background: var(--surface2); }
+.turn-row.active { background: rgba(245,166,35,.08); border-left: 3px solid var(--amber); padding-left: 13px; }
+.turn-arrow { font-size: 1.3rem; min-width: 26px; text-align: center; color: var(--amber); }
+.turn-info { flex: 1; min-width: 0; }
+.turn-street { font-size: .9rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.turn-detail { font-size: .72rem; color: var(--muted); margin-top: 1px; }
+.turn-dist-col { font-family: 'Barlow Condensed', sans-serif; font-size: .82rem; color: var(--muted); white-space: nowrap; }
+
+/* Bottom sheet */
+#sheet { position: absolute; bottom: 0; left: 0; right: 0; z-index: 200; }
+#sheetHandle { background: var(--surface); border-top: 1px solid var(--border); padding: 14px 16px 12px; display: flex; align-items: center; gap: 12px; cursor: pointer; box-shadow: 0 -4px 20px rgba(0,0,0,.4); position: relative; }
+.hbar { width: 36px; height: 4px; background: var(--dim); border-radius: 2px; position: absolute; top: 6px; left: 50%; transform: translateX(-50%); }
+.hicon { font-size: 1.2rem; color: var(--amber); }
+.htxt { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); flex: 1; }
+.hdest { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 600; color: var(--amber); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sheetBody { background: var(--surface); border-top: 1px solid var(--border); display: none; box-shadow: 0 -4px 20px rgba(0,0,0,.4); }
+#sheet.open #sheetHandle { border-top-color: var(--amber); }
+#sheet.open #sheetBody { display: block; }
+#sheet.open .htxt { color: var(--text); }
+
+/* Search */
+.dest-search { padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+.search-row { display: flex; gap: 8px; align-items: center; }
+.search-input-wrap { flex: 1; position: relative; }
+.search-input { width: 100%; background: var(--surface2); border: 1.5px solid var(--border); border-radius: 8px; color: var(--text); font-family: 'Barlow', sans-serif; font-size: 1rem; font-weight: 500; padding: 10px 40px 10px 14px; transition: border-color .2s; -webkit-appearance: none; }
+.search-input:focus { outline: none; border-color: var(--amber); }
+.search-input::placeholder { color: var(--muted); }
+.search-clear { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--muted); font-size: 1rem; padding: 4px; display: none; }
+.search-clear.show { display: block; }
+.voice-btn { width: 44px; height: 44px; border-radius: 50%; background: var(--surface2); border: 1.5px solid var(--border); color: var(--muted); font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .2s; flex-shrink: 0; }
+.voice-btn:hover { border-color: var(--amber); color: var(--amber); }
+.voice-btn.listening { border-color: var(--red); color: var(--red); background: rgba(248,113,113,.1); animation: voicepulse 1s infinite; }
+@keyframes voicepulse { 0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.4)} 50%{box-shadow:0 0 0 8px rgba(248,113,113,0)} }
+
+/* Inline voice confirmation panel - sits between search bar and results */
+#voiceConfirmPanel {
+  display: none;
+  background: rgba(245,166,35,0.08);
+  border-bottom: 1px solid var(--amber);
+  border-top: 1px solid var(--amber);
+  padding: 12px 16px;
+  gap: 10px;
+  flex-direction: column;
+}
+#voiceConfirmPanel.show { display: flex; }
+.vc-count { font-family:'Barlow Condensed',sans-serif; font-size:.7rem; letter-spacing:3px; text-transform:uppercase; color:var(--amber); }
+.vc-listen { font-family:'Barlow Condensed',sans-serif; font-size:.7rem; letter-spacing:2px; text-transform:uppercase; color:var(--red); display:none; }
+.vc-listen.show { display:block; }
+.vc-question { font-family:'Barlow Condensed',sans-serif; font-size:1.05rem; font-weight:700; color:var(--text); line-height:1.2; }
+.vc-sub { font-size:.78rem; color:var(--muted); margin-top:2px; }
+.vc-btns { display:flex; gap:8px; margin-top:4px; }
+.vc-btn-yes { flex:1; padding:9px; border-radius:6px; border:none; background:var(--amber); color:#000; font-family:'Barlow Condensed',sans-serif; font-size:.9rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; }
+.vc-btn-no  { flex:1; padding:9px; border-radius:6px; background:var(--surface2); color:var(--text); border:1px solid var(--border); font-family:'Barlow Condensed',sans-serif; font-size:.9rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; }
+
+#suggestions { max-height: 220px; overflow-y: auto; }
+.sug-item { display: flex; align-items: flex-start; gap: 10px; padding: 11px 16px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background .15s; }
+.sug-item:last-child { border-bottom: none; }
+.sug-item:hover, .sug-item:active { background: var(--surface2); }
+.sug-icon { color: var(--muted); font-size: .9rem; margin-top: 2px; flex-shrink: 0; }
+.sug-main { font-size: .95rem; font-weight: 600; color: var(--text); line-height: 1.2; }
+.sug-sub  { font-size: .78rem; color: var(--muted); margin-top: 2px; line-height: 1.2; }
+.sug-loading { padding: 14px 16px; color: var(--muted); font-size: .88rem; font-style: italic; }
+
+.sheet-actions { padding: 10px 16px 14px; display: flex; gap: 8px; }
+.action-btn { flex: 1; padding: 11px; border-radius: 8px; border: none; font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; transition: all .2s; }
+.btn-go { background: var(--amber); color: #000; }
+.btn-go:hover { background: var(--amber2); }
+.btn-go:disabled { background: var(--dim); color: var(--muted); cursor: not-allowed; }
+.btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { border-color: var(--amber); color: var(--amber); }
+
+/* Arrived overlay */
+#arrivedOverlay { position: absolute; inset: 0; z-index: 500; background: rgba(13,15,20,.92); flex-direction: column; align-items: center; justify-content: center; gap: 16px; display: none; }
+#arrivedOverlay.show { display: flex; }
+.arrived-icon { font-size: 4rem; }
+.arrived-title { font-family: 'Barlow Condensed', sans-serif; font-size: 2rem; font-weight: 700; color: var(--green); letter-spacing: 2px; }
+.arrived-dest { font-size: 1rem; color: var(--muted); text-align: center; max-width: 280px; }
+.arrived-btn { margin-top: 8px; padding: 12px 32px; border-radius: 8px; background: var(--amber); color: #000; border: none; font-family: 'Barlow Condensed', sans-serif; font-size: 1.1rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; }
+
+/* Voice overlay */
+#voiceOverlay { position: absolute; inset: 0; z-index: 400; background: rgba(13,15,20,.95); flex-direction: column; align-items: center; justify-content: center; gap: 20px; display: none; }
+#voiceOverlay.show { display: flex; }
+.voice-rings { position: relative; width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; }
+.voice-ring { position: absolute; border-radius: 50%; border: 2px solid var(--red); animation: ringpulse 1.5s infinite; }
+.voice-ring:nth-child(1) { width: 100%; height: 100%; animation-delay: 0s; }
+.voice-ring:nth-child(2) { width: 70%;  height: 70%;  animation-delay: .3s; }
+.voice-ring:nth-child(3) { width: 40%;  height: 40%;  animation-delay: .6s; }
+@keyframes ringpulse { 0%,100%{transform:scale(1);opacity:.4} 50%{transform:scale(1.1);opacity:.1} }
+.voice-mic { font-size: 2rem; z-index: 1; color: var(--red); }
+.voice-prompt { font-family: 'Barlow Condensed', sans-serif; font-size: 1.1rem; color: var(--text); letter-spacing: 2px; text-transform: uppercase; }
+.voice-heard { font-size: 1.2rem; font-weight: 600; color: var(--amber); min-height: 1.5rem; text-align: center; max-width: 300px; }
+.voice-cancel { padding: 10px 28px; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-family: 'Barlow Condensed', sans-serif; font-size: .9rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; }
+
+/* School zone warning banner */
+#schoolZone {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 290;
+  background: #f59e0b;
+  color: #000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  box-shadow: 0 2px 12px rgba(0,0,0,.4);
+  animation: schoolpulse 2s infinite;
+}
+#schoolZone.show { display: flex; }
+@keyframes schoolpulse {
+  0%,100% { background: #f59e0b; }
+  50%     { background: #fbbf24; }
+}
+.school-icon { font-size: 1.4rem; }
+#toast { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(60px); background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-size: .85rem; padding: 8px 18px; border-radius: 20px; z-index: 600; transition: transform .3s, opacity .3s; opacity: 0; pointer-events: none; max-width: 90%; text-align: center; }
+#toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+/* GPS marker */
+.gps-outer { width: 20px; height: 20px; border-radius: 50%; background: rgba(96,165,250,.2); border: 2px solid var(--blue); display: flex; align-items: center; justify-content: center; animation: gpsp 2s infinite; }
+.gps-inner { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); }
+@keyframes gpsp { 0%,100%{box-shadow:0 0 0 0 rgba(96,165,250,.4)} 50%{box-shadow:0 0 0 10px rgba(96,165,250,0)} }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="instBar">
+  <div class="inst-inner">
+    <div class="inst-arrow" id="instArrow">&#8593;</div>
+    <div class="inst-text">
+      <div class="inst-action" id="instAction">Head on</div>
+      <div class="inst-street" id="instStreet">--</div>
+    </div>
+    <div class="inst-dist">
+      <span class="dn" id="instDistNum">--</span>
+      <span class="du" id="instDistUnit">km</span>
+    </div>
+  </div>
+  <div class="inst-prog"><div class="inst-prog-fill" id="instFill" style="width:0%"></div></div>
+</div>
+
+<!-- Speed widget - bottom left -->
+<div id="speedWidget">
+  <div class="speed-circle" id="speedCircle">
+    <span class="speed-num" id="speedNum">0</span>
+    <span class="speed-unit">km/h</span>
+  </div>
+  <div class="limit-sign" id="limitSign">
+    <span class="limit-num" id="limitNum">--</span>
+    <span class="limit-lbl">limit</span>
+  </div>
+</div>
+
+<div id="pills">
+  <div class="pill">
+    <div class="pdot" id="gpsDot"></div>
+    <span class="plbl">GPS</span>
+    <span class="pval" id="gpsVal">--</span>
+  </div>
+  <div class="pill" id="pillRoute" style="display:none">
+    <div class="pdot rte" id="routeDot"></div>
+    <span class="pval" id="routeVal">--</span>
+  </div>
+</div>
+
+<div id="rerouteBanner">Recalculating route...</div>
+
+<!-- School zone warning - shown when near a school during school hours -->
+<div id="schoolZone">
+  <span class="school-icon">&#127979;</span>
+  <span>School zone &mdash; 40 km/h</span>
+  <span class="school-icon">&#9888;</span>
+</div>
+
+<button id="turnsToggle" onclick="toggleTurns()" title="Turn by turn">&#8801;</button>
+<button id="recenterBtn" onclick="toggleTracking()" title="Re-centre on GPS">&#9678;</button>
+
+<div id="turnsDrawer">
+  <div class="turns-hdr">
+    <span class="turns-title">Turn by Turn</span>
+    <span class="turns-stats" id="turnsStats">--</span>
+    <button class="turns-close" onclick="toggleTurns()">&#x2715;</button>
+  </div>
+  <div class="turns-list" id="turnsList"></div>
+</div>
+
+<div id="sheet">
+  <div id="sheetHandle" onclick="toggleSheet()">
+    <div class="hbar"></div>
+    <span class="hicon">&#8853;</span>
+    <span class="htxt" id="handleText">Set destination</span>
+    <span class="hdest" id="handleDest"></span>
+  </div>
+  <div id="sheetBody">
+    <div class="dest-search">
+      <div class="search-row">
+        <div class="search-input-wrap">
+          <input type="text" id="destInput" class="search-input"
+            placeholder="Where do you want to go?"
+            autocomplete="off" autocorrect="off" spellcheck="false"
+            oninput="onDestInput()" onkeydown="onDestKey(event)"/>
+          <button class="search-clear" id="searchClear" onclick="clearDest()">&#x2715;</button>
+        </div>
+        <button class="voice-btn" id="voiceBtn" onclick="startVoice()" title="Speak destination">&#127908;</button>
+      </div>
+    </div>
+    <!-- Inline voice confirmation - shown above results when voice search completes -->
+    <div id="voiceConfirmPanel">
+      <div class="vc-header">
+        <span class="vc-count" id="vcCount"></span>
+        <span class="vc-listen" id="vcListening">&#9679; Listening...</span>
+      </div>
+      <div class="vc-question" id="vcDestName"></div>
+      <div class="vc-sub" id="vcDestSub"></div>
+      <div class="vc-btns">
+        <button class="vc-btn-yes" onclick="voiceConfirmAnswer(true)">Yes, go</button>
+        <button class="vc-btn-no"  onclick="voiceConfirmAnswer(false)">No, cancel</button>
+      </div>
+    </div>
+    <div id="suggestions"></div>
+    <div class="sheet-actions">
+      <button class="action-btn btn-go" id="btnGo" onclick="go()" disabled>Go</button>
+      <button class="action-btn btn-secondary" onclick="clearAll()">Clear</button>
+      <button class="action-btn btn-secondary" onclick="testSpeech()" title="Test audio" style="flex:0;padding:11px 14px;font-size:1.2rem">&#128266;</button>
+    </div>
+  </div>
+</div>
+
+<div id="voiceOverlay">
+  <div class="voice-rings">
+    <div class="voice-ring"></div>
+    <div class="voice-ring"></div>
+    <div class="voice-ring"></div>
+    <div class="voice-mic">&#127908;</div>
+  </div>
+  <div class="voice-prompt">Listening...</div>
+  <div class="voice-heard" id="voiceHeard"></div>
+  <button class="voice-cancel" onclick="cancelVoice()">Cancel</button>
+</div>
+
+<!-- Voice confirmation panel: injected above suggestions inside the sheet -->
+<!-- (rendered dynamically by offerVoiceConfirmation, not a fixed overlay) -->
+
+<div id="arrivedOverlay">
+  <div class="arrived-icon">&#127937;</div>
+  <div class="arrived-title">You have arrived</div>
+  <div class="arrived-dest" id="arrivedDest"></div>
+  <button class="arrived-btn" onclick="clearAll()">Done</button>
+</div>
+
+<div id="toast"></div>
+
+<!--
+  NoSleep video: keeps iPhone screen awake while navigating.
+  A looping silent 1x1 pixel video is the only reliable method
+  on iOS Safari. WakeLock API is used on Chrome / Android.
+-->
+<video id="noSleepVid" playsinline autoplay muted loop
+  style="position:fixed;width:1px;height:1px;top:0;left:0;opacity:0.01;pointer-events:none;z-index:-1"
+  src="data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAs1tZGF0AAACrgYF//+q3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE1MiByMjg1NCBlOWE1OTAzIC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAxNyAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTEgcmVmPTMgZGVibG9jaz0xOjA6MCBhbmFseXNlPTB4MzoweDExMyBtZT1oZXggc3VibWU9NyBwc3k9MSBwc3lfcmQ9MS4wMDowLjAwIG1peGVkX3JlZj0xIG1lX3JhbmdlPTE2IGNocm9tYV9tZT0xIHRyZWxsaXM9MSA4eDhkY3Q9MSBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0tMiBwYWdlcz0yIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTMgYl9weXJhbWlkPTIgYl9hZGFwdD0xIGJfYmlhcz0wIGRpcmVjdD0xIHdlaWdodGI9MSBvcGVuX2dvcD0wIHdlaWdodHA9MiBrZXlpbnQ9MjUwIGtleWludF9taW49NSBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAADZliIQAV/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4gAAABBBmiRsQ//98QAAAwAAAwAAFuQAAAANQZ5CeIV/AAADAAADAAAT5AAAAAtBnmJ4hX8AAAMAAAADAAADAAAACkGegHiFfwAAAwAAAAMAAAAJQZ6+eIV/AAADAAAAAA==">
+</video>
+
+<script>
+// =============================================================
+// CONFIGURATION
+// Edit these values before deploying or sharing this file.
+// =============================================================
+
+// Your email address - sent to Nominatim as a courtesy identifier
+// so their ops team can contact you if needed. Does not appear
+// in any UI. Replace with your own address before deploying.
+var NOMINATIM_EMAIL = 'osmgps-app@example.com';
+
+// Speed over limit threshold before the display turns red (km/h).
+// e.g. set to 5 to allow 5 km/h grace above the posted limit.
+var SPEED_GRACE_KMH = 3;
+
+// Metres off the route before recalculation is triggered.
+var REROUTE_METRES = 80;
+
+// Minimum milliseconds between successive re-route calls.
+var REROUTE_COOLDOWN_MS = 15000;
+
+// Distance ahead (metres) at which the upcoming turn is announced.
+// 600m suits driving; reduce to 200-300m for walking/cycling.
+var SPEAK_WARN_METRES = 600;
+
+// Distance (metres) at which the "turn now" announcement fires.
+// 80m suits driving; reduce to 25-40m for walking/cycling.
+var SPEAK_TURN_METRES = 80;
+
+// Distance (metres) from a turn node at which the step is considered passed.
+// 60m suits driving at speed; reduce to 20m for walking/cycling.
+var STEP_ADVANCE_METRES = 60;
+
+// =============================================================
+// API ENDPOINTS  (change if self-hosting)
+// =============================================================
+var OSRM_URL      = 'https://router.project-osrm.org/route/v1/driving';
+var PHOTON_URL    = 'https://photon.komoot.io/api/';
+var NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+var OVERPASS_URL  = 'https://overpass-api.de/api/interpreter';
+
+// =============================================================
+// SPEED LIMIT DEFAULTS BY OSRM ROAD CLASS
+// Used when OSRM does not return an explicit maxspeed value.
+// These reflect typical Australian urban/rural limits (km/h).
+// Adjust for other countries if needed.
+// =============================================================
+var DEFAULT_LIMITS = {
+  'motorway':       110,
+  'motorway_link':  80,
+  'trunk':          100,
+  'trunk_link':     60,
+  'primary':        60,
+  'primary_link':   60,
+  'secondary':      60,
+  'secondary_link': 60,
+  'tertiary':       50,
+  'tertiary_link':  50,
+  'residential':    50,
+  'living_street':  20,
+  'service':        20,
+  'unclassified':   50,
+  'road':           50
+};
+
+// =============================================================
+// STATE
+// =============================================================
+var map;
+var gpsMarker  = null;
+var routeLayer     = null;
+var remainingLayer = null;   // redrawn each GPS update to show only undriven portion
+var destMarker = null;
+
+var myPos      = null;   // {lat, lon}
+var mySpeedKmh = 0;
+var destPos    = null;   // {lat, lon}
+var destLabel  = '';
+
+var steps       = [];    // [{arrow, action, street, distM, lat, lon, limitKmh}]
+var stepIdx     = 0;
+var routeCoords = [];
+var totalDist   = 0;
+var totalTime   = 0;
+var currentLimitKmh = null;
+
+var tracking    = true;
+var rerouteLock = false;
+var speechOn    = true;
+var lastSpokenIdx = -1;
+var selectedVoice = null;  // shared voice for both synthesis calls
+var voiceRec    = null;
+
+var sugResults  = [];
+var sugTimer    = null;
+var sugAbort    = null;
+var voiceSearchActive = false;  // true when voice triggered the last geocode search
+
+// School zone detection
+var nearbySchools   = [];   // [{lat, lon, name}] fetched from Overpass after routing
+var inSchoolZone    = false;
+var schoolZoneSpoken = false;
+
+var sheetOpen   = false;
+var turnsOpen   = false;
+
+// =============================================================
+// BOOT
+// =============================================================
+window.addEventListener('load', function() {
+  initMap();
+  startGps();
+  initWakeLock();
+  loadVoice();
+
+  // Delegated click handler for geocoder suggestions
+  g('suggestions').addEventListener('click', function(e) {
+    var el = e.target.closest('[data-idx]');
+    if (!el) return;
+    var item = sugResults[parseInt(el.dataset.idx, 10)];
+    if (item) selectDest(item);
+  });
+});
+
+// =============================================================
+// VOICE SELECTION
+// Choose a voice once and reuse it for all synthesis calls so
+// recognition and synthesis feel consistent. Prefer en-AU,
+// then any local English voice, then any English voice.
+// =============================================================
+function loadVoice() {
+  function pick() {
+    var vs = window.speechSynthesis.getVoices();
+    if (!vs.length) return;
+    selectedVoice =
+      vs.find(function(v) { return v.lang === 'en-AU' && v.localService; }) ||
+      vs.find(function(v) { return v.lang === 'en-AU'; }) ||
+      vs.find(function(v) { return v.lang === 'en-US' && v.localService; }) ||
+      vs.find(function(v) { return v.lang.startsWith('en') && v.localService; }) ||
+      vs.find(function(v) { return v.lang.startsWith('en'); }) ||
+      null;
+  }
+  if (window.speechSynthesis) {
+    pick();
+    window.speechSynthesis.addEventListener('voiceschanged', pick);
+
+    // iOS keep-alive: speechSynthesis stalls after ~15s of inactivity.
+    // Calling pause()+resume() every 10s prevents the audio session
+    // from being suspended by iOS without making any audible sound.
+    if (isIOS()) {
+      setInterval(function() {
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        }
+      }, 10000);
+    }
+  }
+}
+
+// =============================================================
+// MAP
+// =============================================================
+function initMap() {
+  map = L.map('map', {
+    zoomControl: false        // we add it manually at bottom-right
+  }).setView([-25.0, 133.0], 4);  // Default: centre of Australia -- GPS will recentre immediately
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+  map.on('dragstart', function() { setTracking(false); });
+}
+
+// =============================================================
+// GPS
+// =============================================================
+function startGps() {
+  if (!navigator.geolocation) {
+    toast('Geolocation not available in this browser');
+    setPill('gpsDot', 'err'); g('gpsVal').textContent = 'N/A';
+    return;
+  }
+  setPill('gpsDot', 'bz'); g('gpsVal').textContent = 'Acquiring...';
+  navigator.geolocation.watchPosition(onGps, onGpsErr, {
+    enableHighAccuracy: true, maximumAge: 2000, timeout: 15000
+  });
+}
+
+function onGps(pos) {
+  var lat = pos.coords.latitude;
+  var lon = pos.coords.longitude;
+  var acc = Math.round(pos.coords.accuracy);
+  // coords.speed is in m/s, may be null when stationary
+  mySpeedKmh = pos.coords.speed != null ? Math.round(pos.coords.speed * 3.6) : 0;
+  myPos = { lat: lat, lon: lon };
+
+  setPill('gpsDot', 'on');
+  g('gpsVal').textContent = '+/-' + acc + 'm';
+
+  updateSpeedDisplay();
+
+  if (!gpsMarker) {
+    gpsMarker = L.marker([lat, lon], { icon: L.divIcon({
+      html: '<div class="gps-outer"><div class="gps-inner"></div></div>',
+      className: '', iconSize: [20,20], iconAnchor: [10,10]
+    }), zIndexOffset: 1000 }).addTo(map);
+  } else {
+    gpsMarker.setLatLng([lat, lon]);
+  }
+
+  if (tracking) map.setView([lat, lon], map.getZoom(), { animate: true, duration: 0.8 });
+  if (steps.length > 0) navigate(lat, lon);
+}
+
+function onGpsErr(e) {
+  var m = { 1: 'Location denied', 2: 'Position unavailable', 3: 'GPS timeout' };
+  setPill('gpsDot', 'err');
+  g('gpsVal').textContent = m[e.code] || 'Error';
+  toast(m[e.code] || 'GPS error - check browser permissions');
+}
+
+// =============================================================
+// SPEED DISPLAY
+// =============================================================
+function updateSpeedDisplay() {
+  g('speedNum').textContent = mySpeedKmh;
+  var over = currentLimitKmh != null && mySpeedKmh > (currentLimitKmh + SPEED_GRACE_KMH);
+  g('speedCircle').classList.toggle('over', over);
+}
+
+function setCurrentLimit(limitKmh) {
+  currentLimitKmh = limitKmh;
+  if (limitKmh != null) {
+    g('limitNum').textContent = limitKmh;
+    g('limitSign').classList.add('show');
+  } else {
+    g('limitSign').classList.remove('show');
+  }
+  updateSpeedDisplay();
+}
+
+// =============================================================
+// GEOCODING
+// Tries Photon first (komoot.io), falls back to Nominatim.
+// =============================================================
+function onDestInput() {
+  var val = g('destInput').value.trim();
+  g('searchClear').classList.toggle('show', val.length > 0);
+  g('btnGo').disabled = !destPos;
+  clearTimeout(sugTimer);
+  sugResults = [];
+  if (val.length < 2) { g('suggestions').innerHTML = ''; return; }
+  sugTimer = setTimeout(function() { fetchSuggestions(val); }, 400);
+}
+
+// =============================================================
+// VOICE QUERY CLEANING & FUZZY RETRY
+// Speech recognisers sometimes prepend filler words, mishear
+// street suffixes, or add punctuation. We clean the transcript
+// before geocoding, then retry with progressively simpler
+// variants if the first attempt returns no results.
+// =============================================================
+
+// Remove common speech-to-text artifacts from a voice destination query
+function cleanVoiceQuery(raw) {
+  var q = raw.trim();
+
+  // Remove leading navigation phrases people say naturally
+  q = q.replace(/^(navigate to|take me to|go to|directions to|drive to|how do i get to|get directions to|find)\s+/i, '');
+
+  // Remove trailing filler
+  q = q.replace(/\s+(please|thanks|thank you)\.?$/i, '');
+
+  // Normalise common speech mishearings of road types
+  var roadFixes = [
+    [/\bst\b(?!reet)/gi,    'Street'],
+    [/\bave\b(?!nue)/gi,    'Avenue'],
+    [/\brd\b(?!oad)/gi,     'Road'],
+    [/\bdr\b(?!ive)/gi,     'Drive'],
+    [/\bcrt?\b/gi,          'Court'],
+    [/\bblvd\b/gi,          'Boulevard'],
+    [/\bhwy\b/gi,           'Highway'],
+    [/\bfwy\b/gi,           'Freeway'],
+    [/\bpde\b/gi,           'Parade'],
+    // Speech often says "number 12" for house numbers
+    [/\bnumber\s+(\d+)/gi,  '$1'],
+  ];
+  roadFixes.forEach(function(pair) { q = q.replace(pair[0], pair[1]); });
+
+  // Trim extra whitespace
+  q = q.replace(/\s{2,}/g, ' ').trim();
+
+  return q || raw.trim();
+}
+
+// Build progressive fallback variants of a query for fuzzy retry.
+// e.g. "42 Smith Street Braddon Canberra ACT" ->
+//   ["42 Smith Street Braddon Canberra ACT",
+//    "42 Smith Street Braddon Canberra",
+//    "42 Smith Street Braddon",
+//    "Smith Street Braddon"]
+function queryVariants(q) {
+  var parts = q.split(/\s+/);
+  var variants = [q];
+
+  // Drop trailing tokens one at a time (state, city, suburb)
+  for (var i = parts.length - 1; i >= 2; i--) {
+    variants.push(parts.slice(0, i).join(' '));
+  }
+  // Also try dropping leading house number if present
+  if (/^\d+/.test(q)) {
+    variants.push(q.replace(/^\d+\s+/, ''));
+  }
+  // Deduplicate while preserving order
+  var seen = {};
+  return variants.filter(function(v) {
+    if (seen[v] || !v.trim()) return false;
+    seen[v] = true; return true;
+  });
+}
+
+// Try geocoding with the cleaned query, then progressively simpler
+// variants until we get results or exhaust all options.
+function fetchSuggestionsWithFallback(q) {
+  var variants = queryVariants(q);
+  var idx = 0;
+
+  function tryNext() {
+    if (idx >= variants.length) {
+      // All variants exhausted
+      g('suggestions').innerHTML =
+        '<div class="sug-loading">No results found - try typing the address</div>';
+      voiceSearchActive = false;
+      return;
+    }
+    var v = variants[idx++];
+    if (v !== q && idx > 1) {
+      // Update input to show what we're trying
+      g('destInput').value = v;
+    }
+    // Use the normal fetchSuggestions but intercept empty result to retry
+    fetchSuggestionsVariant(v, function(hasResults) {
+      if (!hasResults) tryNext();
+    });
+  }
+
+  tryNext();
+}
+
+// Like fetchSuggestions but calls onDone(true/false) based on whether results came back.
+// voiceSearchActive is already set by the caller; renderSuggestions will trigger
+// the confirmation flow when it sees a non-empty result.
+function fetchSuggestionsVariant(q, onDone) {
+  if (sugAbort) { try { sugAbort.abort(); } catch(e) {} }
+  sugAbort = new AbortController();
+  var signal = sugAbort.signal;
+
+  g('suggestions').innerHTML = '<div class="sug-loading">Searching...</div>';
+
+  var photonParams = new URLSearchParams({ q: q, limit: '7', lang: 'en' });
+  if (myPos) { photonParams.set('lat', myPos.lat); photonParams.set('lon', myPos.lon); }
+
+  fetch(PHOTON_URL + '?' + photonParams.toString(), { signal: signal, mode: 'cors' })
+    .then(function(res) { if (!res.ok) throw new Error('Photon ' + res.status); return res.json(); })
+    .then(function(data) {
+      if (data.features && data.features.length > 0) {
+        var items = photonToItems(data.features);
+        renderSuggestions(items);
+        onDone(true);
+      } else {
+        // Try Nominatim before declaring empty
+        return fetchNominatimVariant(q, signal, onDone);
+      }
+    })
+    .catch(function(e) {
+      if (e.name === 'AbortError') return;
+      fetchNominatimVariant(q, signal, onDone);
+    });
+}
+
+function fetchNominatimVariant(q, signal, onDone) {
+  var params = new URLSearchParams({
+    q: q, format: 'jsonv2', limit: '7', addressdetails: '1',
+    'accept-language': 'en', email: NOMINATIM_EMAIL
+  });
+  if (myPos) {
+    params.set('viewbox',
+      (myPos.lon-1)+','+(myPos.lat+1)+','+(myPos.lon+1)+','+(myPos.lat-1));
+    params.set('bounded', '0');
+  }
+  fetch(NOMINATIM_URL + '?' + params.toString(), {
+    signal: signal, mode: 'cors', headers: { 'Accept': 'application/json' }
+  })
+    .then(function(res) { if (!res.ok) throw new Error('Nominatim ' + res.status); return res.json(); })
+    .then(function(data) {
+      if (Array.isArray(data) && data.length > 0) {
+        renderSuggestions(nominatimToItems(data));
+        onDone(true);
+      } else {
+        onDone(false);
+      }
+    })
+    .catch(function(e) {
+      if (e.name !== 'AbortError') onDone(false);
+    });
+}
+
+// Shared item-building helpers (extracted from the original fetch functions)
+function photonToItems(features) {
+  return features.map(function(f) {
+    var p = f.properties;
+    var main = (p.name || (p.housenumber ? p.housenumber + ' ' + p.street : p.street) || p.city || 'Place');
+    var subParts = [
+      p.name && p.housenumber ? p.housenumber + ' ' + p.street : null,
+      p.name && p.street && !p.housenumber ? p.street : null,
+      p.city, p.state, p.country
+    ].filter(function(x) { return x && x !== main; });
+    return { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0],
+             main: main, sub: subParts.slice(0,3).join(', '),
+             label: main + (subParts.length ? ', ' + subParts.slice(0,3).join(', ') : '') };
+  });
+}
+
+function nominatimToItems(data) {
+  return data.map(function(r) {
+    var a = r.address || {};
+    var road = a.road || a.pedestrian || a.footway || '';
+    var main = r.name || (a.house_number ? a.house_number + ' ' + road : road) ||
+               a.suburb || a.city || r.display_name.split(',')[0];
+    var subParts = [road !== main ? road : null, a.suburb,
+                    a.city || a.town || a.village, a.state, a.country]
+                   .filter(function(x) { return x && x !== main; });
+    return { lat: parseFloat(r.lat), lon: parseFloat(r.lon),
+             main: main, sub: subParts.slice(0,3).join(', '),
+             label: main + (subParts.length ? ', ' + subParts.slice(0,3).join(', ') : '') };
+  });
+}
+
+function fetchSuggestions(q) {
+  if (sugAbort) { try { sugAbort.abort(); } catch(e) {} }
+  sugAbort = new AbortController();
+  var signal = sugAbort.signal;
+
+  g('suggestions').innerHTML = '<div class="sug-loading">Searching...</div>';
+
+  // Build Photon URL
+  var photonParams = new URLSearchParams({ q: q, limit: '7', lang: 'en' });
+  if (myPos) { photonParams.set('lat', myPos.lat); photonParams.set('lon', myPos.lon); }
+  var photonUrl = PHOTON_URL + '?' + photonParams.toString();
+
+  fetch(photonUrl, { signal: signal, mode: 'cors' })
+    .then(function(res) {
+      if (!res.ok) throw new Error('Photon HTTP ' + res.status);
+      return res.json();
+    })
+    .then(function(data) {
+      if (data.features && data.features.length > 0) {
+        var items = data.features.map(function(f) {
+          var p = f.properties;
+          var main = (p.name || (p.housenumber ? p.housenumber + ' ' + p.street : p.street) || p.city || 'Place');
+          var subParts = [
+            p.name && p.housenumber ? p.housenumber + ' ' + p.street : null,
+            p.name && p.street && !p.housenumber ? p.street : null,
+            p.city, p.state, p.country
+          ].filter(function(x) { return x && x !== main; });
+          var sub = subParts.slice(0, 3).join(', ');
+          var coords = f.geometry.coordinates;
+          return { lat: coords[1], lon: coords[0], main: main, sub: sub,
+                   label: main + (sub ? ', ' + sub : '') };
+        });
+        renderSuggestions(items);
+      } else {
+        // Photon returned empty - try Nominatim
+        fetchSuggestionsNominatim(q, signal);
+      }
+    })
+    .catch(function(e) {
+      if (e.name === 'AbortError') return;
+      console.warn('Photon unavailable:', e.message, '- trying Nominatim');
+      fetchSuggestionsNominatim(q, signal);
+    });
+}
+
+function fetchSuggestionsNominatim(q, signal) {
+  var params = new URLSearchParams({
+    q:               q,
+    format:          'jsonv2',
+    limit:           '7',
+    addressdetails:  '1',
+    'accept-language': 'en',
+    email:           NOMINATIM_EMAIL
+  });
+  if (myPos) {
+    // viewbox format: left,top,right,bottom  (west,north,east,south)
+    params.set('viewbox',
+      (myPos.lon - 1) + ',' + (myPos.lat + 1) + ',' +
+      (myPos.lon + 1) + ',' + (myPos.lat - 1));
+    params.set('bounded', '0');
+  }
+
+  fetch(NOMINATIM_URL + '?' + params.toString(), {
+    signal: signal,
+    mode: 'cors',
+    headers: { 'Accept': 'application/json' }
+  })
+    .then(function(res) {
+      if (!res.ok) throw new Error('Nominatim HTTP ' + res.status);
+      return res.json();
+    })
+    .then(function(data) {
+      if (!Array.isArray(data) || data.length === 0) {
+        g('suggestions').innerHTML = '<div class="sug-loading">No results found - try a different search</div>';
+        return;
+      }
+      var items = data.map(function(r) {
+        var a = r.address || {};
+        var road = a.road || a.pedestrian || a.footway || '';
+        var main = r.name ||
+          (a.house_number ? a.house_number + ' ' + road : road) ||
+          a.suburb || a.city || r.display_name.split(',')[0];
+        var subParts = [
+          road !== main ? road : null,
+          a.suburb, a.city || a.town || a.village, a.state, a.country
+        ].filter(function(x) { return x && x !== main; });
+        var sub = subParts.slice(0, 3).join(', ');
+        return { lat: parseFloat(r.lat), lon: parseFloat(r.lon),
+                 main: main, sub: sub, label: main + (sub ? ', ' + sub : '') };
+      });
+      renderSuggestions(items);
+    })
+    .catch(function(e) {
+      if (e.name === 'AbortError') return;
+      console.error('Both geocoders failed:', e);
+      g('suggestions').innerHTML =
+        '<div class="sug-loading">Search unavailable - check internet connection</div>';
+    });
+}
+
+function renderSuggestions(items) {
+  sugResults = items;
+  g('suggestions').innerHTML = items.map(function(item, i) {
+    return '<div class="sug-item" data-idx="' + i + '">' +
+      '<div class="sug-icon">&#128205;</div>' +
+      '<div>' +
+      '<div class="sug-main">' + esc(item.main) + '</div>' +
+      (item.sub ? '<div class="sug-sub">' + esc(item.sub) + '</div>' : '') +
+      '</div></div>';
+  }).join('');
+
+  // If this search was triggered by voice, offer voice confirmation
+  if (voiceSearchActive && items.length > 0) {
+    voiceSearchActive = false;
+    setTimeout(function() { offerVoiceConfirmation(items); }, 400);
+  }
+}
+
+// =============================================================
+// VOICE CONFIRMATION FLOW
+// After a voice-triggered geocode search, speak the result count
+// and first result, then listen for yes/no.
+// =============================================================
+var voiceSearchActive  = false;  // set true when voice triggers a search
+var voiceConfirmRec    = null;   // SpeechRecognition for yes/no listening
+
+function offerVoiceConfirmation(items) {
+  var first  = items[0];
+  var count  = items.length;
+  var plural = count === 1 ? 'result' : 'results';
+
+  // Make sure the sheet is open so the user sees the suggestion list
+  if (!sheetOpen) openSheet();
+
+  // Populate the inline confirmation panel above the suggestions
+  g('vcCount').textContent   = 'Found ' + count + ' ' + plural + ' -- top result:';
+  g('vcDestName').textContent = first.main;
+  g('vcDestSub').textContent  = first.sub || '';
+  g('vcListening').classList.remove('show');
+  g('voiceConfirmPanel').classList.add('show');
+
+  // Scroll the confirm panel into view within the sheet body only
+  var sheetBody = document.getElementById('sheetBody');
+  if (sheetBody) sheetBody.scrollTop = 0;
+
+  var countPhrase = count === 1 ? 'I found one result.' : 'I found ' + count + ' results.';
+  var prompt = countPhrase + ' Would you like to navigate to ' + first.main +
+    (first.sub ? ', ' + first.sub.split(',')[0] : '') + '? Say yes or no.';
+
+  speakThen(prompt, function() { listenForYesNo(first); });
+}
+
+function listenForYesNo(item) {
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    // No speech recognition - just leave the visual confirmation visible
+    return;
+  }
+
+  g('vcListening').classList.add('show');
+
+  voiceConfirmRec = new SR();
+  voiceConfirmRec.lang = selectedVoice ? selectedVoice.lang : 'en-AU';
+  voiceConfirmRec.continuous = false;
+  voiceConfirmRec.interimResults = false;
+  voiceConfirmRec.maxAlternatives = 3;
+
+  voiceConfirmRec.onresult = function(e) {
+    // Check all alternatives for a yes/no match
+    var heard = '';
+    for (var i = 0; i < e.results[0].length; i++) {
+      heard = e.results[0][i].transcript.trim().toLowerCase();
+      if (isYes(heard) || isNo(heard)) break;
+    }
+    voiceConfirmAnswer(isYes(heard), item);
+  };
+
+  voiceConfirmRec.onerror = function(e) {
+    g('vcListening').classList.remove('show');
+    console.warn('Yes/no recognition error:', e.error);
+  };
+
+  voiceConfirmRec.onend = function() {
+    g('vcListening').classList.remove('show');
+  };
+
+  try { voiceConfirmRec.start(); } catch(e) {
+    g('vcListening').classList.remove('show');
+  }
+}
+
+function isYes(t) {
+  return /^(yes|yeah|yep|yup|sure|ok|okay|go|navigate|correct|right|affirmative|do it)/.test(t);
+}
+
+function isNo(t) {
+  return /^(no|nope|nah|cancel|stop|negative|don't|dont|skip)/.test(t);
+}
+
+function dismissVoiceConfirmPanel() {
+  if (voiceConfirmRec) { try { voiceConfirmRec.stop(); } catch(e) {} voiceConfirmRec = null; }
+  g('vcListening').classList.remove('show');
+  g('voiceConfirmPanel').classList.remove('show');
+}
+
+function voiceConfirmAnswer(confirmed, item) {
+  dismissVoiceConfirmPanel();
+
+  // item may come from button tap (no item arg) - use sugResults[0] as fallback
+  var target = item || sugResults[0];
+
+  if (confirmed && target) {
+    speakThen('Navigating to ' + target.main, function() {
+      selectDest(target);
+      closeSheet();
+      go(false);
+    });
+  } else {
+    speak('Cancelling navigation');
+    // Leave suggestions visible so user can pick a different result manually
+  }
+}
+
+function selectDest(item) {
+  destPos   = { lat: item.lat, lon: item.lon };
+  destLabel = item.label;
+  g('destInput').value = item.label;
+  g('searchClear').classList.add('show');
+  g('btnGo').disabled = false;
+  g('suggestions').innerHTML = '';
+  sugResults = [];
+  g('handleDest').textContent = item.main;
+
+  if (destMarker) map.removeLayer(destMarker);
+  destMarker = L.marker([item.lat, item.lon], { icon: L.divIcon({
+    html: '<div style="width:14px;height:14px;border-radius:50%;background:var(--amber);border:2px solid #0d0f14;box-shadow:0 0 12px var(--amber2)"></div>',
+    className: '', iconSize: [14,14], iconAnchor: [7,7]
+  })}).addTo(map);
+  map.panTo([item.lat, item.lon]);
+}
+
+function onDestKey(e) {
+  if (e.key === 'Enter') {
+    var first = g('suggestions').querySelector('[data-idx]');
+    if (first) { first.click(); return; }
+    if (g('destInput').value.trim()) fetchSuggestions(g('destInput').value.trim());
+  }
+  if (e.key === 'Escape') closeSheet();
+}
+
+function clearDest() {
+  g('destInput').value = '';
+  g('searchClear').classList.remove('show');
+  g('btnGo').disabled = true;
+  g('suggestions').innerHTML = '';
+  sugResults = [];
+  destPos = null; destLabel = '';
+  g('handleDest').textContent = '';
+  if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
+}
+
+// =============================================================
+// VOICE INPUT
+// iOS notes:
+//   - SpeechRecognition is only available in Safari on iOS.
+//     Chrome and Opera on iOS use WebKit but Apple blocks the
+//     API for third-party browsers. We detect this and warn.
+//   - iOS requires synthesis to be completely finished AND a
+//     longer pause before recognition can start (500ms+).
+//   - Recognition aborts if any audio context is still active.
+// =============================================================
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function isIOSSafari() {
+  return isIOS() && /Safari/.test(navigator.userAgent) &&
+    !/CriOS|OPiOS|FxiOS|EdgiOS/.test(navigator.userAgent);
+}
+
+function startVoice() {
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SR) {
+    toast('Voice input not supported in this browser - try Chrome or Safari');
+    return;
+  }
+
+  g('voiceOverlay').classList.add('show');
+  g('voiceHeard').textContent = '';
+  g('voiceBtn').classList.add('listening');
+
+  function beginListening() {
+    // Ensure synthesis is completely stopped before opening mic
+    // (iOS aborts recognition if audio is still playing)
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+
+    // iOS needs a moment after any audio activity before the mic opens
+    var iosDelay = isIOS() ? 600 : 100;
+
+    setTimeout(function() {
+      voiceRec = new SR();
+      // Use the same locale as the selected synthesis voice for consistency
+      voiceRec.lang = selectedVoice ? selectedVoice.lang : 'en-AU';
+      voiceRec.continuous = false;
+      voiceRec.interimResults = true;
+      voiceRec.maxAlternatives = 3;
+
+      voiceRec.onresult = function(e) {
+        var t = e.results[0][0].transcript;
+        g('voiceHeard').textContent = t;
+        if (e.results[0].isFinal) {
+          var cleaned = cleanVoiceQuery(t);
+          g('destInput').value = cleaned;
+          g('searchClear').classList.add('show');
+          cancelVoice();
+          voiceSearchActive = true;
+          speak('Searching for ' + cleaned);
+          fetchSuggestionsWithFallback(cleaned);
+        }
+      };
+
+      voiceRec.onerror = function(e) {
+        cancelVoice();
+        var m = {
+          'no-speech':     'No speech detected - please try again',
+          'not-allowed':   'Microphone permission denied - check browser settings',
+          'aborted':       'Microphone aborted - ensure microphone permission is granted and try again',
+          'network':       'Network error during recognition - check connection',
+          'audio-capture': 'No microphone found'
+        };
+        toast(m[e.error] || 'Voice error: ' + e.error);
+      };
+
+      voiceRec.onend = function() {
+        g('voiceOverlay').classList.remove('show');
+        g('voiceBtn').classList.remove('listening');
+      };
+
+      try {
+        voiceRec.start();
+      } catch(err) {
+        cancelVoice();
+        toast('Could not start microphone: ' + err.message);
+      }
+    }, iosDelay);
+  }
+
+  // Speak the prompt first, then wait for it to finish + extra buffer
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance('What is your destination?');
+    u.rate = 0.92; u.volume = 1; u.pitch = 1;
+    if (selectedVoice) u.voice = selectedVoice;
+    u.onend = function() {
+      // iOS needs extra time after synthesis ends before mic can open
+      var delay = isIOS() ? 700 : 300;
+      setTimeout(beginListening, delay);
+    };
+    // Safety fallback: if onend never fires (iOS bug), start anyway after timeout
+    var safetyMs = isIOS() ? 4000 : 2500;
+    var safetyTimer = setTimeout(function() { beginListening(); }, safetyMs);
+    u.onend = function() {
+      clearTimeout(safetyTimer);
+      var delay = isIOS() ? 700 : 300;
+      setTimeout(beginListening, delay);
+    };
+    window.speechSynthesis.speak(u);
+  } else {
+    beginListening();
+  }
+}
+
+function cancelVoice() {
+  if (voiceRec) { try { voiceRec.stop(); } catch(e) {} voiceRec = null; }
+  g('voiceOverlay').classList.remove('show');
+  g('voiceBtn').classList.remove('listening');
+}
+
+// =============================================================
+// ROUTING - OSRM
+// Requests maxspeed annotation so we get posted speed limits
+// per route step where OSM has them tagged.
+// =============================================================
+function go(isReroute) {
+  if (!myPos)   { toast('Waiting for GPS fix...'); return; }
+  if (!destPos) { toast('Choose a destination first'); return; }
+
+  closeSheet();
+  g('pillRoute').style.display = 'flex';
+  setPill('routeDot', 'bz');
+  g('routeVal').textContent = isReroute ? 'Rerouting...' : 'Routing...';
+
+  // Speak IMMEDIATELY inside the user gesture (button tap), before the async
+  // fetch starts. This is critical on iOS: the audio session must be activated
+  // synchronously within the gesture handler. By the time the Promise resolves
+  // (1-2 seconds later), iOS would otherwise have released the audio context
+  // and the subsequent speakStep(0) would silently fail.
+  if (!isReroute) {
+    warmUpSpeech();
+    speak('Calculating route to ' + (destLabel ? destLabel.split(',')[0] : 'destination'));
+  }
+
+  // Note: the public OSRM demo server does not support annotations=maxspeed.
+  // Speed limits are inferred from intersection road classes + DEFAULT_LIMITS table.
+  var url = OSRM_URL + '/' + myPos.lon + ',' + myPos.lat + ';' +
+            destPos.lon + ',' + destPos.lat +
+            '?steps=true&geometries=geojson&overview=full';
+
+  fetch(url)
+    .then(function(res) {
+      if (!res.ok) throw new Error('OSRM HTTP ' + res.status);
+      return res.json();
+    })
+    .then(function(data) {
+      if (data.code !== 'Ok') throw new Error('No route found');
+
+      var route = data.routes[0];
+      var leg   = route.legs[0];
+      totalDist = route.distance / 1000;
+      totalTime = route.duration / 60;
+      routeCoords = route.geometry.coordinates.map(function(c) { return [c[1], c[0]]; });
+
+      steps = leg.steps.map(function(s) {
+        var mr = osrmManeuver(s.maneuver.type, s.maneuver.modifier);
+        return {
+          arrow:    mr.arrow,
+          action:   mr.action,
+          street:   s.name || s.ref || s.maneuver.type,
+          distM:    s.distance,
+          lat:      s.maneuver.location[1],
+          lon:      s.maneuver.location[0],
+          limitKmh: guessLimitFromStep(s)
+        };
+      });
+
+      stepIdx = 0; lastSpokenIdx = -1;
+
+      if (routeLayer) map.removeLayer(routeLayer);
+      routeLayer = L.layerGroup([
+        L.polyline(routeCoords, { color: '#f5a623', weight: 8, opacity: 0.15 }),
+        L.polyline(routeCoords, { color: '#f5a623', weight: 4, opacity: 0.95 })
+      ]).addTo(map);
+
+      if (!isReroute) map.fitBounds(L.latLngBounds(routeCoords), { padding: [60,60] });
+
+      setPill('routeDot', 'rte');
+      g('routeVal').textContent = totalDist.toFixed(1) + 'km  ' + Math.round(totalTime) + 'min';
+
+      renderTurns();
+      g('instBar').classList.add('show');
+      g('turnsToggle').classList.add('show');
+      setTracking(true);
+      updateInstruction();
+      // Small delay so speakStep doesn't interrupt any still-playing utterance
+      if (speechOn) setTimeout(function() { speakStep(0); }, 800);
+      // Set initial speed limit from first step
+      if (steps.length) setCurrentLimit(steps[0].limitKmh);
+      // Fetch schools near this route for zone detection (non-blocking)
+      nearbySchools = []; inSchoolZone = false; schoolZoneSpoken = false;
+      g('schoolZone').classList.remove('show');
+      fetchSchoolsNearRoute();
+    })
+    .catch(function(e) {
+      setPill('routeDot', 'err');
+      g('routeVal').textContent = 'Failed';
+      toast(e.message || 'Routing failed - check internet connection');
+      console.error(e);
+    });
+}
+
+// Guess a speed limit from step properties using intersection type heuristics
+function guessLimitFromStep(step) {
+  // OSRM steps have intersections with classes array
+  if (step.intersections && step.intersections.length) {
+    var classes = step.intersections[0].classes || [];
+    for (var k in DEFAULT_LIMITS) {
+      if (classes.indexOf(k) >= 0) return DEFAULT_LIMITS[k];
+    }
+    if (classes.indexOf('motorway') >= 0) return DEFAULT_LIMITS['motorway'];
+    if (classes.indexOf('trunk') >= 0)    return DEFAULT_LIMITS['trunk'];
+    if (classes.indexOf('primary') >= 0)  return DEFAULT_LIMITS['primary'];
+  }
+  // Final fallback: use 50 (standard Australian urban default)
+  return 50;
+}
+
+function osrmManeuver(type, mod) {
+  if (type === 'arrive')                          return { arrow: '&#127937;', action: 'arrive' };
+  if (type === 'depart')                          return { arrow: '&#8593;',   action: 'depart' };
+  if (type === 'roundabout' || type === 'rotary') return { arrow: '&#8635;',   action: 'take the roundabout' };
+  var m = {
+    'straight':     { arrow: '&#8593;',  action: 'continue' },
+    'slight right': { arrow: '&#8599;',  action: 'bear right' },
+    'right':        { arrow: '&#8594;',  action: 'turn right' },
+    'sharp right':  { arrow: '&#8600;',  action: 'sharp right' },
+    'slight left':  { arrow: '&#8598;',  action: 'bear left' },
+    'left':         { arrow: '&#8592;',  action: 'turn left' },
+    'sharp left':   { arrow: '&#8601;',  action: 'sharp left' },
+    'uturn':        { arrow: '&#8617;',  action: 'make a U-turn' }
+  };
+  return m[mod || 'straight'] || { arrow: '&#8593;', action: type || 'continue' };
+}
+
+// =============================================================
+// NAVIGATION LOOP
+// =============================================================
+function navigate(lat, lon) {
+  // Off-route detection
+  if (!rerouteLock && routeCoords.length > 0) {
+    if (distFromPolylineM(lat, lon, routeCoords) > REROUTE_METRES) {
+      triggerReroute(lat, lon);
+      return;
+    }
+  }
+
+  // Advance step index when within STEP_ADVANCE_METRES of turn node
+  while (stepIdx < steps.length - 1 &&
+         haversineM(lat, lon, steps[stepIdx].lat, steps[stepIdx].lon) < STEP_ADVANCE_METRES) {
+    stepIdx++;
+  }
+
+  // Update speed limit display for current step
+  if (steps[stepIdx]) setCurrentLimit(steps[stepIdx].limitKmh);
+
+  // School zone check (overrides step limit if active)
+  checkSchoolZone(lat, lon);
+
+  // Trim the route line to show only the remaining portion
+  trimRouteDisplay(lat, lon);
+
+  updateInstruction();
+
+  // Speech guidance
+  if (speechOn && stepIdx < steps.length) {
+    var s  = steps[stepIdx];
+    var dM = haversineM(lat, lon, s.lat, s.lon);
+    if (dM < SPEAK_TURN_METRES && lastSpokenIdx !== stepIdx) {
+      speakStep(stepIdx);
+      lastSpokenIdx = stepIdx;
+    } else if (dM < SPEAK_WARN_METRES && dM >= SPEAK_TURN_METRES &&
+               lastSpokenIdx !== -(stepIdx + 1) &&
+               s.action !== 'continue' && s.action !== 'depart') {
+      speak('In ' + Math.round(dM) + ' metres, ' + s.action + ' onto ' + s.street);
+      lastSpokenIdx = -(stepIdx + 1);
+    }
+  }
+
+  // Arrival check
+  var last = steps[steps.length - 1];
+  if (last && haversineM(lat, lon, last.lat, last.lon) < 30) showArrived();
+}
+
+function updateInstruction() {
+  if (!steps.length) return;
+  var s = steps[Math.min(stepIdx, steps.length - 1)];
+  g('instArrow').innerHTML  = s.arrow;
+  g('instAction').textContent = actionLabel(s);
+  g('instStreet').textContent = s.street;
+
+  if (myPos) {
+    var dM = haversineM(myPos.lat, myPos.lon, s.lat, s.lon);
+    if (dM >= 1000) {
+      g('instDistNum').textContent = (dM / 1000).toFixed(1);
+      g('instDistUnit').textContent = 'km';
+    } else {
+      g('instDistNum').textContent = String(Math.round(dM / 10) * 10);
+      g('instDistUnit').textContent = 'm';
+    }
+  }
+
+  var pct = steps.length > 1 ? (stepIdx / (steps.length - 1)) * 100 : 100;
+  g('instFill').style.width = pct + '%';
+
+  // Update route pill with remaining
+  var remM = 0;
+  for (var i = stepIdx; i < steps.length - 1; i++) remM += steps[i].distM;
+  var remKm  = remM / 1000;
+  var remMin = totalDist > 0 ? Math.ceil((remM / (totalDist * 1000)) * totalTime) : 0;
+  g('routeVal').textContent =
+    (remKm >= 1 ? remKm.toFixed(1) + 'km' : Math.round(remM) + 'm') + '  ' + remMin + 'min';
+
+  // Highlight active row in turns list
+  document.querySelectorAll('.turn-row').forEach(function(el) { el.classList.remove('active'); });
+  var row = document.getElementById('tr' + stepIdx);
+  // Scroll active row into view within the turns drawer only --
+  // never call scrollIntoView on body-level elements as it scrolls the whole page
+  if (row) {
+    row.classList.add('active');
+    var list = document.querySelector('.turns-list');
+    if (list) {
+      var rowTop    = row.offsetTop;
+      var rowBottom = rowTop + row.offsetHeight;
+      var listTop   = list.scrollTop;
+      var listBottom = listTop + list.clientHeight;
+      if (rowTop < listTop) {
+        list.scrollTop = rowTop;
+      } else if (rowBottom > listBottom) {
+        list.scrollTop = rowBottom - list.clientHeight;
+      }
+    }
+  }
+}
+
+function triggerReroute(lat, lon) {
+  rerouteLock = true;
+  g('rerouteBanner').classList.add('show');
+  if (speechOn) speak('Off route, recalculating');
+  myPos = { lat: lat, lon: lon };
+  go(true);
+  setTimeout(function() {
+    g('rerouteBanner').classList.remove('show');
+    rerouteLock = false;
+  }, REROUTE_COOLDOWN_MS);
+}
+
+function showArrived() {
+  steps = []; stepIdx = 0;
+  g('instBar').classList.remove('show');
+  g('arrivedDest').textContent = destLabel;
+  g('arrivedOverlay').classList.add('show');
+  setCurrentLimit(null);
+  if (speechOn) speak('You have arrived at your destination');
+  g('routeVal').textContent = 'Arrived';
+}
+
+// =============================================================
+// TURNS LIST
+// =============================================================
+function renderTurns() {
+  g('turnsStats').textContent = totalDist.toFixed(1) + ' km  ' + Math.round(totalTime) + ' min';
+  g('turnsList').innerHTML = steps.map(function(s, i) {
+    var limitStr = s.limitKmh ? '  |  ' + s.limitKmh + ' km/h limit' : '';
+    return '<div class="turn-row" id="tr' + i + '" onclick="zoomStep(' + i + ')">' +
+      '<div class="turn-arrow">' + s.arrow + '</div>' +
+      '<div class="turn-info">' +
+        '<div class="turn-street">' + esc(s.street) + '</div>' +
+        '<div class="turn-detail">' + actionLabel(s) + limitStr + '</div>' +
+      '</div>' +
+      '<div class="turn-dist-col">' +
+        (s.distM >= 1000 ? (s.distM/1000).toFixed(1)+'km' : Math.round(s.distM)+'m') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function actionLabel(s) {
+  if (s.action === 'depart')   return 'Head on';
+  if (s.action === 'arrive')   return 'Arrive at destination';
+  if (s.action === 'continue') return 'Continue on';
+  return cap(s.action) + ' onto';
+}
+
+function zoomStep(i) {
+  var s = steps[i]; if (!s) return;
+  map.setView([s.lat, s.lon], 16);
+  setTracking(false);
+}
+
+function toggleTurns() {
+  turnsOpen = !turnsOpen;
+  g('turnsDrawer').classList.toggle('show', turnsOpen);
+  // Hide left-column elements behind the drawer when it is open
+  var hide = turnsOpen ? 'hidden' : 'visible';
+  g('speedWidget').style.visibility  = hide;
+  g('recenterBtn').style.visibility  = hide;
+  // turnsToggle stays visible so the user can close the drawer
+}
+
+// =============================================================
+// SHEET
+// =============================================================
+function toggleSheet() { sheetOpen ? closeSheet() : openSheet(); }
+
+function openSheet() {
+  sheetOpen = true;
+  g('sheet').classList.add('open');
+  g('handleText').textContent = 'Where to?';
+  setTimeout(function() { g('destInput').focus(); }, 300);
+}
+
+function closeSheet() {
+  sheetOpen = false;
+  g('sheet').classList.remove('open');
+  g('handleText').textContent = destLabel ? 'Destination' : 'Set destination';
+  g('destInput').blur();
+  g('suggestions').innerHTML = '';
+}
+
+// =============================================================
+// TRACKING
+// =============================================================
+function setTracking(on) {
+  tracking = on;
+  g('recenterBtn').classList.toggle('tracking', on);
+  if (on && myPos) map.setView([myPos.lat, myPos.lon], map.getZoom(), { animate: true });
+}
+function toggleTracking() { setTracking(!tracking); }
+
+// =============================================================
+// SPEECH  (all calls use selectedVoice for consistency)
+// =============================================================
+function speakStep(i) {
+  var s = steps[i]; if (!s) return;
+  var txt;
+  if      (s.action === 'depart')   txt = 'Head on ' + s.street;
+  else if (s.action === 'arrive')   txt = 'You have arrived';
+  else if (s.action === 'continue') txt = 'Continue on ' + s.street + ' for ' + fmtDist(s.distM);
+  else                              txt = cap(s.action) + ' onto ' + s.street;
+  speak(txt);
+}
+
+// Tap the speaker button to verify audio is working on your device
+function testSpeech() {
+  warmUpSpeech();
+  speak('Navigator audio is working');
+}
+
+// =============================================================
+// SPEECH
+// iOS Safari has several synthesis quirks:
+//   1. speechSynthesis.speak() silently does nothing if called
+//      before voices have loaded or before any user gesture.
+//   2. iOS suspends the audio session when the screen dims --
+//      synthesis stops mid-sentence. We detect and resume.
+//   3. A queued utterance can stall forever. We use a watchdog
+//      timer to cancel and retry if nothing plays within 2s.
+//   4. Volume must be set via the utterance AND the device must
+//      not be in silent mode (we cannot override silent mode).
+// =============================================================
+var synthReady   = false;  // true after first successful user-gesture warmup
+var synthStallId = null;   // watchdog timer id
+
+// Called on first user touch to warm up iOS audio session
+function warmUpSpeech() {
+  if (synthReady || !window.speechSynthesis) return;
+  synthReady = true;
+  // Speak a silent utterance to unlock the audio session
+  var u = new SpeechSynthesisUtterance(' ');
+  u.volume = 0;
+  u.onend = function() { synthReady = true; };
+  window.speechSynthesis.speak(u);
+}
+
+function speak(txt) {
+  if (!window.speechSynthesis) return;
+  if (!txt || !txt.trim()) return;
+
+  // Cancel anything pending
+  window.speechSynthesis.cancel();
+
+  // Clear any stall watchdog
+  if (synthStallId) { clearTimeout(synthStallId); synthStallId = null; }
+
+  var u = new SpeechSynthesisUtterance(txt);
+  u.rate   = 0.92;
+  u.volume = 1.0;
+  u.pitch  = 1.0;
+  if (selectedVoice) u.voice = selectedVoice;
+
+  // iOS stall watchdog: if utterance hasn't started within 2s, retry once
+  synthStallId = setTimeout(function() {
+    synthStallId = null;
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      window.speechSynthesis.cancel();
+      setTimeout(function() { window.speechSynthesis.speak(u); }, 200);
+    }
+  }, 2000);
+
+  u.onstart = function() {
+    if (synthStallId) { clearTimeout(synthStallId); synthStallId = null; }
+  };
+
+  u.onend = function() {
+    if (synthStallId) { clearTimeout(synthStallId); synthStallId = null; }
+  };
+
+  window.speechSynthesis.speak(u);
+}
+
+// Speak then call a callback when the utterance finishes
+function speakThen(txt, callback) {
+  if (!window.speechSynthesis) { if (callback) callback(); return; }
+  if (!txt || !txt.trim()) { if (callback) callback(); return; }
+
+  window.speechSynthesis.cancel();
+  if (synthStallId) { clearTimeout(synthStallId); synthStallId = null; }
+
+  var u = new SpeechSynthesisUtterance(txt);
+  u.rate   = 0.92;
+  u.volume = 1.0;
+  u.pitch  = 1.0;
+  if (selectedVoice) u.voice = selectedVoice;
+
+  var done = false;
+  function finish() {
+    if (done) return;
+    done = true;
+    if (synthStallId) { clearTimeout(synthStallId); synthStallId = null; }
+    if (callback) setTimeout(callback, 200);
+  }
+
+  // Safety: call callback even if onend never fires (iOS bug)
+  synthStallId = setTimeout(finish, Math.max(3000, txt.length * 80));
+
+  u.onend = finish;
+  u.onerror = finish;
+
+  window.speechSynthesis.speak(u);
+}
+
+// =============================================================
+// CLEAR ALL
+// =============================================================
+function clearAll() {
+  if (routeLayer)     { map.removeLayer(routeLayer);     routeLayer     = null; }
+  if (remainingLayer) { map.removeLayer(remainingLayer); remainingLayer = null; }
+  if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
+  steps = []; stepIdx = 0; routeCoords = []; lastSpokenIdx = -1;
+  destPos = null; destLabel = ''; rerouteLock = false; turnsOpen = false;
+  currentLimitKmh = null;
+
+  g('instBar').classList.remove('show');
+  g('arrivedOverlay').classList.remove('show');
+  g('turnsDrawer').classList.remove('show');
+  g('turnsToggle').classList.remove('show');
+  g('speedWidget').style.visibility = 'visible';
+  g('recenterBtn').style.visibility = 'visible';
+  g('pillRoute').style.display = 'none';
+  g('turnsList').innerHTML = '';
+  g('destInput').value = '';
+  g('searchClear').classList.remove('show');
+  g('btnGo').disabled = true;
+  g('handleDest').textContent = '';
+  g('handleText').textContent = 'Set destination';
+  g('suggestions').innerHTML = '';
+  g('limitSign').classList.remove('show');
+  g('speedCircle').classList.remove('over');
+  g('schoolZone').classList.remove('show');
+  nearbySchools = []; inSchoolZone = false; schoolZoneSpoken = false;
+  sugResults = [];
+
+  if (myPos && tracking) map.setView([myPos.lat, myPos.lon], 15);
+  g('voiceConfirmPanel').classList.remove('show');
+  if (voiceConfirmRec) { try { voiceConfirmRec.stop(); } catch(e) {} voiceConfirmRec = null; }
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  closeSheet();
+}
+
+// =============================================================
+// SCREEN WAKE LOCK
+// Keeps the screen on during navigation.
+// Method 1: WakeLock API  -- Chrome 84+, Edge, Android Chrome,
+//           Safari 16.4+ (but NOT Chrome/Opera on iOS).
+// Method 2: Silent looping video -- the only reliable method
+//           on iOS Safari. iOS will not sleep the screen while
+//           a video is playing. We retry on every touch event
+//           since iOS can pause the video when screen dims.
+// =============================================================
+// =============================================================
+// SCREEN WAKE LOCK
+// Three layered methods, all active simultaneously:
+//
+// Method 1: WakeLock API (Chrome 84+, Edge, Safari 16.4+)
+//           Most reliable when available. Auto re-acquires.
+//
+// Method 2: Silent looping video (iOS Safari fallback)
+//           iOS will not sleep while a video element plays.
+//           Must be started from a user gesture. Re-triggered
+//           on every touch in case iOS pauses it.
+//
+// Method 3: DeviceMotionEvent / DeviceOrientationEvent polling
+//           Subscribing to motion/orientation events tells iOS
+//           the page needs continuous sensor access, which
+//           suppresses the auto-lock timer. Silent, no battery
+//           impact beyond normal sensor polling. Works even
+//           when the other two methods are throttled.
+//
+// All three are belt-and-suspenders: any one working is enough.
+// =============================================================
+var wakeLockObj       = null;
+var wakeActive        = false;
+var orientationActive = false;
+
+function initWakeLock() {
+
+  // Try video immediately (will silently fail until first gesture on iOS)
+  startVideoWake();
+
+  function activateAll() {
+    if (wakeActive) return;
+    wakeActive = true;
+    startVideoWake();
+    requestWakeLockAPI();
+    startOrientationWake();
+  }
+
+  // Re-check video and orientation on every touch.
+  // iOS can pause the video or drop the sensor subscription silently.
+  document.addEventListener('touchstart', function() {
+    warmUpSpeech();
+    startVideoWake();
+    startOrientationWake();
+    if (!wakeActive) activateAll();
+  }, { passive: true });
+
+  document.addEventListener('click', function() {
+    warmUpSpeech();
+    startVideoWake();
+    if (!wakeActive) activateAll();
+  });
+
+  // Re-acquire everything when page becomes visible again
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      startVideoWake();
+      startOrientationWake();
+      if (window.speechSynthesis && window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+      if (wakeActive && 'wakeLock' in navigator && !wakeLockObj) {
+        requestWakeLockAPI();
+      }
+    }
+  });
+}
+
+// Method 1: WakeLock API
+function requestWakeLockAPI() {
+  if (!('wakeLock' in navigator)) return;
+  navigator.wakeLock.request('screen')
+    .then(function(lock) {
+      wakeLockObj = lock;
+      lock.addEventListener('release', function() {
+        wakeLockObj = null;
+        // Auto re-acquire — iOS releases the lock when tab is backgrounded
+        if (wakeActive && document.visibilityState === 'visible') {
+          setTimeout(requestWakeLockAPI, 500);
+        }
+      });
+    })
+    .catch(function(e) {
+      // Silently fail — video + orientation methods are still active
+      console.warn('WakeLock API unavailable:', e.message);
+    });
+}
+
+// Method 2: Silent video
+function startVideoWake() {
+  var v = document.getElementById('noSleepVid');
+  if (!v) return;
+  if (v.paused) {
+    v.play().catch(function() {
+      // Autoplay blocked — will retry on next user gesture
+    });
+  }
+}
+
+// Method 3: DeviceOrientation / DeviceMotion event subscription
+// Keeping an active listener prevents iOS from engaging auto-lock
+// because the OS believes the page is consuming live sensor data.
+function startOrientationWake() {
+  if (orientationActive) return;
+
+  // iOS 13+ requires permission for DeviceMotionEvent
+  if (typeof DeviceMotionEvent !== 'undefined' &&
+      typeof DeviceMotionEvent.requestPermission === 'function') {
+    // requestPermission must be called from a user gesture.
+    // We call it here since startOrientationWake is always called
+    // from a touchstart or click handler.
+    DeviceMotionEvent.requestPermission()
+      .then(function(state) {
+        if (state === 'granted') {
+          attachOrientationListener();
+        } else {
+          // Permission denied — fall back silently to video + WakeLock
+          console.warn('DeviceMotion permission denied');
+        }
+      })
+      .catch(function() {
+        // requestPermission threw (e.g. non-iOS browser) — try direct attach
+        attachOrientationListener();
+      });
+  } else {
+    // Non-iOS or older iOS — attach directly (no permission needed)
+    attachOrientationListener();
+  }
+}
+
+function attachOrientationListener() {
+  if (orientationActive) return;
+
+  // Prefer DeviceOrientationEvent (lower battery than motion)
+  var eventName = (typeof DeviceOrientationEvent !== 'undefined')
+    ? 'deviceorientation'
+    : (typeof DeviceMotionEvent !== 'undefined' ? 'devicemotion' : null);
+
+  if (!eventName) return;
+
+  // The handler itself does nothing — the subscription is what matters
+  function noopHandler() {}
+
+  window.addEventListener(eventName, noopHandler, { passive: true });
+  orientationActive = true;
+
+  // Belt-and-suspenders: re-attach every 30 seconds in case iOS drops it
+  setInterval(function() {
+    if (orientationActive) {
+      window.removeEventListener(eventName, noopHandler);
+      window.addEventListener(eventName, noopHandler, { passive: true });
+    }
+  }, 30000);
+}
+
+// =============================================================
+// SCHOOL ZONE DETECTION
+// After routing, fetch schools near the route from Overpass.
+// On each GPS update, check if we are within SCHOOL_RADIUS_M
+// of any school during Australian school hours (weekdays only).
+//
+// IMPORTANT: This is best-effort. It depends on schools being
+// tagged in OpenStreetMap for your area. Coverage is generally
+// good in Australian cities but may be incomplete in some areas.
+// Do NOT rely solely on this for school zone compliance.
+// Always observe posted signs.
+// =============================================================
+var SCHOOL_RADIUS_M  = 150;  // metres from school to trigger warning
+var SCHOOL_HOURS     = [     // [startHour, startMin, endHour, endMin] AEST (UTC+10)
+  [8, 0,  9, 30],            // morning zone
+  [14, 30, 16, 0]            // afternoon zone
+];
+
+function fetchSchoolsNearRoute() {
+  if (!routeCoords || routeCoords.length === 0) return;
+
+  // Build bounding box around the route with a small buffer
+  var lats = routeCoords.map(function(c) { return c[0]; });
+  var lons = routeCoords.map(function(c) { return c[1]; });
+  var s = Math.min.apply(null, lats) - 0.005;
+  var n = Math.max.apply(null, lats) + 0.005;
+  var w = Math.min.apply(null, lons) - 0.005;
+  var e = Math.max.apply(null, lons) + 0.005;
+
+  var q = '[out:json][timeout:20];' +
+          '(node["amenity"="school"](' + s + ',' + w + ',' + n + ',' + e + ');' +
+          'way["amenity"="school"](' + s + ',' + w + ',' + n + ',' + e + ');' +
+          'relation["amenity"="school"](' + s + ',' + w + ',' + n + ',' + e + '););' +
+          'out center;';
+
+  fetch(OVERPASS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'data=' + encodeURIComponent(q)
+  })
+  .then(function(res) { return res.json(); })
+  .then(function(data) {
+    nearbySchools = (data.elements || []).map(function(el) {
+      var lat = el.lat || (el.center && el.center.lat);
+      var lon = el.lon || (el.center && el.center.lon);
+      return { lat: lat, lon: lon, name: (el.tags && el.tags.name) || 'School' };
+    }).filter(function(s) { return s.lat && s.lon; });
+    console.log('School zones loaded: ' + nearbySchools.length + ' schools near route');
+  })
+  .catch(function(e) {
+    console.warn('School zone fetch failed (non-critical):', e.message);
+  });
+}
+
+function checkSchoolZone(lat, lon) {
+  if (!nearbySchools.length) {
+    if (inSchoolZone) setSchoolZone(false);
+    return;
+  }
+
+  // Check if current time is within school zone hours (using local time)
+  var now     = new Date();
+  var day     = now.getDay();           // 0=Sun, 6=Sat
+  var hh      = now.getHours();
+  var mm      = now.getMinutes();
+  var isWeekday = day >= 1 && day <= 5;
+  var inHours = false;
+
+  if (isWeekday) {
+    for (var i = 0; i < SCHOOL_HOURS.length; i++) {
+      var sh = SCHOOL_HOURS[i];
+      var startMins = sh[0] * 60 + sh[1];
+      var endMins   = sh[2] * 60 + sh[3];
+      var nowMins   = hh * 60 + mm;
+      if (nowMins >= startMins && nowMins < endMins) { inHours = true; break; }
+    }
+  }
+
+  if (!inHours) {
+    if (inSchoolZone) setSchoolZone(false);
+    return;
+  }
+
+  // Check proximity to any school
+  var near = false;
+  for (var j = 0; j < nearbySchools.length; j++) {
+    if (haversineM(lat, lon, nearbySchools[j].lat, nearbySchools[j].lon) < SCHOOL_RADIUS_M) {
+      near = true; break;
+    }
+  }
+  setSchoolZone(near);
+}
+
+function setSchoolZone(active) {
+  if (active === inSchoolZone) return;
+  inSchoolZone = active;
+  g('schoolZone').classList.toggle('show', active);
+
+  if (active) {
+    // Override speed limit display to 40 while in zone
+    setCurrentLimit(40);
+    if (speechOn && !schoolZoneSpoken) {
+      speak('Warning, school zone ahead. Speed limit 40 kilometres per hour.');
+      schoolZoneSpoken = true;
+    }
+  } else {
+    schoolZoneSpoken = false;
+    // Restore the step's normal limit
+    if (steps[stepIdx]) setCurrentLimit(steps[stepIdx].limitKmh);
+  }
+}
+
+// =============================================================
+// ROUTE LINE TRIMMING
+// Redraws only the remaining (undriven) portion of the route
+// on each GPS update, snapping it to the nearest polyline point.
+// =============================================================
+function trimRouteDisplay(lat, lon) {
+  if (!routeCoords || routeCoords.length < 2 || !map) return;
+
+  // Find the nearest segment index on the route polyline
+  var bestIdx  = 0;
+  var bestDist = Infinity;
+  for (var i = 0; i < routeCoords.length - 1; i++) {
+    var d = ptSegM(lat, lon,
+      routeCoords[i][0],   routeCoords[i][1],
+      routeCoords[i+1][0], routeCoords[i+1][1]);
+    if (d < bestDist) { bestDist = d; bestIdx = i; }
+  }
+
+  // Slice from nearest point onward
+  var remaining = routeCoords.slice(bestIdx);
+  if (remaining.length < 2) return;
+
+  if (remainingLayer) map.removeLayer(remainingLayer);
+  remainingLayer = L.layerGroup([
+    L.polyline(remaining, { color: '#f5a623', weight: 9, opacity: 0.18 }),
+    L.polyline(remaining, { color: '#f5a623', weight: 4, opacity: 1.0  })
+  ]).addTo(map);
+}
+
+// =============================================================
+// GEOMETRY
+// =============================================================
+function haversineM(a, b, c, d) {
+  var R = 6371000;
+  var da = (c - a) * Math.PI / 180;
+  var db = (d - b) * Math.PI / 180;
+  var x  = Math.sin(da/2)*Math.sin(da/2) +
+           Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(db/2)*Math.sin(db/2);
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function distFromPolylineM(lat, lon, coords) {
+  var min = Infinity;
+  for (var i = 0; i < coords.length - 1; i++) {
+    var d = ptSegM(lat, lon, coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1]);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+function ptSegM(px, py, ax, ay, bx, by) {
+  var dx = bx - ax, dy = by - ay;
+  if (dx === 0 && dy === 0) return haversineM(px, py, ax, ay);
+  var t = Math.max(0, Math.min(1, ((px-ax)*dx + (py-ay)*dy) / (dx*dx + dy*dy)));
+  return haversineM(px, py, ax + t*dx, ay + t*dy);
+}
+
+// =============================================================
+// UTILITIES
+// =============================================================
+function g(id)  { return document.getElementById(id); }
+function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : ''; }
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+function fmtDist(m) {
+  return m >= 1000 ? (m/1000).toFixed(1) + ' kilometres' : Math.round(m) + ' metres';
+}
+
+function setPill(id, cls) {
+  var el = document.getElementById(id);
+  if (el) el.className = 'pdot' + (cls ? ' ' + cls : '');
+}
+
+function toast(msg, dur) {
+  var t = g('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, dur || 3500);
+}
+</script>
+</body>
+</html>
