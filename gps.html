@@ -53,7 +53,7 @@ body {
 .inst-prog-fill { height: 100%; background: var(--amber); transition: width .6s; box-shadow: 0 0 8px var(--amber2); }
 
 /* Speed widget - bottom left corner */
-/* My speed circle */
+/* Speed circle - shows current speed only */
 .speed-circle {
   width: 74px; height: 74px;
   border-radius: 50%;
@@ -79,26 +79,6 @@ body {
 .speed-unit {
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 0.58rem; color: var(--muted); letter-spacing: 2px; text-transform: uppercase;
-}
-/* Speed limit sign */
-.limit-sign {
-  width: 52px; height: 52px;
-  border-radius: 50%;
-  background: #fff;
-  border: 4px solid var(--red);
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  box-shadow: 0 2px 10px rgba(0,0,0,.5);
-  display: none;
-}
-.limit-sign.show { display: flex; }
-.limit-num {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 1.2rem; font-weight: 700; color: #111; line-height: 1;
-}
-.limit-lbl {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.5rem; color: #444; letter-spacing: 1px; text-transform: uppercase;
 }
 
 /* Status pills - top right */
@@ -238,32 +218,6 @@ body {
 .voice-heard { font-size: 1.2rem; font-weight: 600; color: var(--amber); min-height: 1.5rem; text-align: center; max-width: 300px; }
 .voice-cancel { padding: 10px 28px; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-family: 'Barlow Condensed', sans-serif; font-size: .9rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; }
 
-/* School zone warning banner */
-#schoolZone {
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  z-index: 290;
-  background: #f59e0b;
-  color: #000;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 8px 16px;
-  font-family: 'Barlow Condensed', sans-serif;
-  font-weight: 700;
-  font-size: 1rem;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  box-shadow: 0 2px 12px rgba(0,0,0,.4);
-  animation: schoolpulse 2s infinite;
-}
-#schoolZone.show { display: flex; }
-@keyframes schoolpulse {
-  0%,100% { background: #f59e0b; }
-  50%     { background: #fbbf24; }
-}
-.school-icon { font-size: 1.4rem; }
 #toast { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(60px); background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-size: .85rem; padding: 8px 18px; border-radius: 20px; z-index: 600; transition: transform .3s, opacity .3s; opacity: 0; pointer-events: none; max-width: 90%; text-align: center; }
 #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
@@ -296,15 +250,11 @@ body {
   <div class="inst-prog"><div class="inst-prog-fill" id="instFill" style="width:0%"></div></div>
 </div>
 
-<!-- Speed widget - bottom left -->
+<!-- Speed widget - bottom left - shows current speed only -->
 <div id="speedWidget">
   <div class="speed-circle" id="speedCircle">
     <span class="speed-num" id="speedNum">0</span>
     <span class="speed-unit">km/h</span>
-  </div>
-  <div class="limit-sign" id="limitSign">
-    <span class="limit-num" id="limitNum">--</span>
-    <span class="limit-lbl">limit</span>
   </div>
 </div>
 
@@ -321,13 +271,6 @@ body {
 </div>
 
 <div id="rerouteBanner">Recalculating route...</div>
-
-<!-- School zone warning - shown when near a school during school hours -->
-<div id="schoolZone">
-  <span class="school-icon">&#127979;</span>
-  <span>School zone &mdash; 40 km/h</span>
-  <span class="school-icon">&#9888;</span>
-</div>
 
 <button id="turnsToggle" onclick="toggleTurns()" title="Turn by turn">&#8801;</button>
 <button id="recenterBtn" onclick="toggleTracking()" title="Re-centre on GPS">&#9678;</button>
@@ -407,16 +350,16 @@ body {
 
 <div id="toast"></div>
 
+
 <!--
   NoSleep video: keeps iPhone screen awake while navigating.
-  A looping silent 1x1 pixel video is the only reliable method
-  on iOS Safari. WakeLock API is used on Chrome / Android.
+  Using a <source> child rather than inline src improves compatibility
+  with older iOS versions. The video is 1x1px, muted, and loops silently.
 -->
 <video id="noSleepVid" playsinline autoplay muted loop
-  style="position:fixed;width:1px;height:1px;top:0;left:0;opacity:0.01;pointer-events:none;z-index:-1"
-  src="data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAs1tZGF0AAACrgYF//+q3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE1MiByMjg1NCBlOWE1OTAzIC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAxNyAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTEgcmVmPTMgZGVibG9jaz0xOjA6MCBhbmFseXNlPTB4MzoweDExMyBtZT1oZXggc3VibWU9NyBwc3k9MSBwc3lfcmQ9MS4wMDowLjAwIG1peGVkX3JlZj0xIG1lX3JhbmdlPTE2IGNocm9tYV9tZT0xIHRyZWxsaXM9MSA4eDhkY3Q9MSBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0tMiBwYWdlcz0yIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTMgYl9weXJhbWlkPTIgYl9hZGFwdD0xIGJfYmlhcz0wIGRpcmVjdD0xIHdlaWdodGI9MSBvcGVuX2dvcD0wIHdlaWdodHA9MiBrZXlpbnQ9MjUwIGtleWludF9taW49NSBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAADZliIQAV/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4gAAABBBmiRsQ//98QAAAwAAAwAAFuQAAAANQZ5CeIV/AAADAAADAAAT5AAAAAtBnmJ4hX8AAAMAAAADAAADAAAACkGegHiFfwAAAwAAAAMAAAAJQZ6+eIV/AAADAAAAAA==">
+  style="position:fixed;width:1px;height:1px;top:0;left:0;opacity:0.01;pointer-events:none;z-index:-1">
+  <source src="data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAs1tZGF0AAACrgYF//+q3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE1MiByMjg1NCBlOWE1OTAzIC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAxNyAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTEgcmVmPTMgZGVibG9jaz0xOjA6MCBhbmFseXNlPTB4MzoweDExMyBtZT1oZXggc3VibWU9NyBwc3k9MSBwc3lfcmQ9MS4wMDowLjAwIG1peGVkX3JlZj0xIG1lX3JhbmdlPTE2IGNocm9tYV9tZT0xIHRyZWxsaXM9MSA4eDhkY3Q9MSBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0tMiBwYWdlcz0yIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTMgYl9weXJhbWlkPTIgYl9hZGFwdD0xIGJfYmlhcz0wIGRpcmVjdD0xIHdlaWdodGI9MSBvcGVuX2dvcD0wIHdlaWdodHA9MiBrZXlpbnQ9MjUwIGtleWludF9taW49NSBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMAAAgAAAADZliIQAV/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4gAAABBBmiRsQ//98QAAAwAAAwAAFuQAAAANQZ5CeIV/AAADAAADAAAT5AAAAAtBnmJ4hX8AAAMAAAADAAADAAAACkGegHiFfwAAAwAAAAMAAAAJQZ6+eIV/AAADAAAAAA==" type="video/mp4">
 </video>
-
 <script>
 // =============================================================
 // CONFIGURATION
@@ -427,10 +370,6 @@ body {
 // so their ops team can contact you if needed. Does not appear
 // in any UI. Replace with your own address before deploying.
 var NOMINATIM_EMAIL = 'osmgps-app@example.com';
-
-// Speed over limit threshold before the display turns red (km/h).
-// e.g. set to 5 to allow 5 km/h grace above the posted limit.
-var SPEED_GRACE_KMH = 3;
 
 // Metres off the route before recalculation is triggered.
 var REROUTE_METRES = 80;
@@ -443,8 +382,8 @@ var REROUTE_COOLDOWN_MS = 15000;
 var SPEAK_WARN_METRES = 600;
 
 // Distance (metres) at which the "turn now" announcement fires.
-// 80m suits driving; reduce to 25-40m for walking/cycling.
-var SPEAK_TURN_METRES = 80;
+// 90m suits driving; reduce to 25-40m for walking/cycling.
+var SPEAK_TURN_METRES = 90;
 
 // Distance (metres) from a turn node at which the step is considered passed.
 // 60m suits driving at speed; reduce to 20m for walking/cycling.
@@ -456,31 +395,6 @@ var STEP_ADVANCE_METRES = 60;
 var OSRM_URL      = 'https://router.project-osrm.org/route/v1/driving';
 var PHOTON_URL    = 'https://photon.komoot.io/api/';
 var NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
-var OVERPASS_URL  = 'https://overpass-api.de/api/interpreter';
-
-// =============================================================
-// SPEED LIMIT DEFAULTS BY OSRM ROAD CLASS
-// Used when OSRM does not return an explicit maxspeed value.
-// These reflect typical Australian urban/rural limits (km/h).
-// Adjust for other countries if needed.
-// =============================================================
-var DEFAULT_LIMITS = {
-  'motorway':       110,
-  'motorway_link':  80,
-  'trunk':          100,
-  'trunk_link':     60,
-  'primary':        60,
-  'primary_link':   60,
-  'secondary':      60,
-  'secondary_link': 60,
-  'tertiary':       50,
-  'tertiary_link':  50,
-  'residential':    50,
-  'living_street':  20,
-  'service':        20,
-  'unclassified':   50,
-  'road':           50
-};
 
 // =============================================================
 // STATE
@@ -496,13 +410,11 @@ var mySpeedKmh = 0;
 var destPos    = null;   // {lat, lon}
 var destLabel  = '';
 
-var steps       = [];    // [{arrow, action, street, distM, lat, lon, limitKmh}]
+var steps       = [];    // [{arrow, action, street, distM, lat, lon}]
 var stepIdx     = 0;
 var routeCoords = [];
 var totalDist   = 0;
 var totalTime   = 0;
-var currentLimitKmh = null;
-
 var tracking    = true;
 var rerouteLock = false;
 var speechOn    = true;
@@ -514,11 +426,6 @@ var sugResults  = [];
 var sugTimer    = null;
 var sugAbort    = null;
 var voiceSearchActive = false;  // true when voice triggered the last geocode search
-
-// School zone detection
-var nearbySchools   = [];   // [{lat, lon, name}] fetched from Overpass after routing
-var inSchoolZone    = false;
-var schoolZoneSpoken = false;
 
 var sheetOpen   = false;
 var turnsOpen   = false;
@@ -590,6 +497,24 @@ function initMap() {
     maxZoom: 19
   }).addTo(map);
   map.on('dragstart', function() { setTracking(false); });
+  map.on('zoomstart', function() { setTracking(false); });
+
+  // Single tap during navigation: repeat the next turn instruction
+  map.on('click', function() {
+    if (steps.length > 0 && stepIdx < steps.length) {
+      speakCurrentInstruction();
+    }
+  });
+
+  // Double tap during navigation: offer to navigate to a new destination.
+  // Double-click zoom is disabled while a route is active so the gesture
+  // is available for this purpose; it is re-enabled when no route is active.
+  map.on('dblclick', function(e) {
+    L.DomEvent.stop(e);
+    if (steps.length > 0) {
+      offerNewDestination();
+    }
+  });
 }
 
 // =============================================================
@@ -641,23 +566,10 @@ function onGpsErr(e) {
 }
 
 // =============================================================
-// SPEED DISPLAY
+// SPEED DISPLAY  (current speed only -- limit display removed)
 // =============================================================
 function updateSpeedDisplay() {
   g('speedNum').textContent = mySpeedKmh;
-  var over = currentLimitKmh != null && mySpeedKmh > (currentLimitKmh + SPEED_GRACE_KMH);
-  g('speedCircle').classList.toggle('over', over);
-}
-
-function setCurrentLimit(limitKmh) {
-  currentLimitKmh = limitKmh;
-  if (limitKmh != null) {
-    g('limitNum').textContent = limitKmh;
-    g('limitSign').classList.add('show');
-  } else {
-    g('limitSign').classList.remove('show');
-  }
-  updateSpeedDisplay();
 }
 
 // =============================================================
@@ -827,17 +739,27 @@ function fetchNominatimVariant(q, signal, onDone) {
 }
 
 // Shared item-building helpers (extracted from the original fetch functions)
+// Returns a note string when a geocoder result has no house number,
+// indicating the pin is at street/suburb level rather than exact address.
+function streetLevelNote(hasHouseNumber) {
+  return hasHouseNumber ? '' : 'Street-level result';
+}
+
 function photonToItems(features) {
   return features.map(function(f) {
     var p = f.properties;
-    var main = (p.name || (p.housenumber ? p.housenumber + ' ' + p.street : p.street) || p.city || 'Place');
+    var hasNum = !!p.housenumber;
+    var main = (p.name || (hasNum ? p.housenumber + ' ' + p.street : p.street) || p.city || 'Place');
     var subParts = [
-      p.name && p.housenumber ? p.housenumber + ' ' + p.street : null,
-      p.name && p.street && !p.housenumber ? p.street : null,
+      p.name && hasNum ? p.housenumber + ' ' + p.street : null,
+      p.name && p.street && !hasNum ? p.street : null,
       p.city, p.state, p.country
     ].filter(function(x) { return x && x !== main; });
+    var sub = subParts.slice(0,3).join(', ');
+    var note = streetLevelNote(hasNum || !!p.name);  // named POIs are exact enough
+    if (note) sub = sub ? sub + '  \u2022  ' + note : note;
     return { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0],
-             main: main, sub: subParts.slice(0,3).join(', '),
+             main: main, sub: sub,
              label: main + (subParts.length ? ', ' + subParts.slice(0,3).join(', ') : '') };
   });
 }
@@ -846,13 +768,17 @@ function nominatimToItems(data) {
   return data.map(function(r) {
     var a = r.address || {};
     var road = a.road || a.pedestrian || a.footway || '';
-    var main = r.name || (a.house_number ? a.house_number + ' ' + road : road) ||
+    var hasNum = !!a.house_number;
+    var main = r.name || (hasNum ? a.house_number + ' ' + road : road) ||
                a.suburb || a.city || r.display_name.split(',')[0];
     var subParts = [road !== main ? road : null, a.suburb,
                     a.city || a.town || a.village, a.state, a.country]
                    .filter(function(x) { return x && x !== main; });
+    var sub = subParts.slice(0,3).join(', ');
+    var note = streetLevelNote(hasNum || !!r.name);
+    if (note) sub = sub ? sub + '  \u2022  ' + note : note;
     return { lat: parseFloat(r.lat), lon: parseFloat(r.lon),
-             main: main, sub: subParts.slice(0,3).join(', '),
+             main: main, sub: sub,
              label: main + (subParts.length ? ', ' + subParts.slice(0,3).join(', ') : '') };
   });
 }
@@ -878,13 +804,16 @@ function fetchSuggestions(q) {
       if (data.features && data.features.length > 0) {
         var items = data.features.map(function(f) {
           var p = f.properties;
-          var main = (p.name || (p.housenumber ? p.housenumber + ' ' + p.street : p.street) || p.city || 'Place');
+          var hasNum = !!p.housenumber;
+          var main = (p.name || (hasNum ? p.housenumber + ' ' + p.street : p.street) || p.city || 'Place');
           var subParts = [
-            p.name && p.housenumber ? p.housenumber + ' ' + p.street : null,
-            p.name && p.street && !p.housenumber ? p.street : null,
+            p.name && hasNum ? p.housenumber + ' ' + p.street : null,
+            p.name && p.street && !hasNum ? p.street : null,
             p.city, p.state, p.country
           ].filter(function(x) { return x && x !== main; });
           var sub = subParts.slice(0, 3).join(', ');
+          var note = streetLevelNote(hasNum || !!p.name);
+          if (note) sub = sub ? sub + '  \u2022  ' + note : note;
           var coords = f.geometry.coordinates;
           return { lat: coords[1], lon: coords[0], main: main, sub: sub,
                    label: main + (sub ? ', ' + sub : '') };
@@ -936,14 +865,17 @@ function fetchSuggestionsNominatim(q, signal) {
       var items = data.map(function(r) {
         var a = r.address || {};
         var road = a.road || a.pedestrian || a.footway || '';
+        var hasNum = !!a.house_number;
         var main = r.name ||
-          (a.house_number ? a.house_number + ' ' + road : road) ||
+          (hasNum ? a.house_number + ' ' + road : road) ||
           a.suburb || a.city || r.display_name.split(',')[0];
         var subParts = [
           road !== main ? road : null,
           a.suburb, a.city || a.town || a.village, a.state, a.country
         ].filter(function(x) { return x && x !== main; });
         var sub = subParts.slice(0, 3).join(', ');
+        var note = streetLevelNote(hasNum || !!r.name);
+        if (note) sub = sub ? sub + '  \u2022  ' + note : note;
         return { lat: parseFloat(r.lat), lon: parseFloat(r.lon),
                  main: main, sub: sub, label: main + (sub ? ', ' + sub : '') };
       });
@@ -1263,8 +1195,6 @@ function go(isReroute) {
     speak('Calculating route to ' + (destLabel ? destLabel.split(',')[0] : 'destination'));
   }
 
-  // Note: the public OSRM demo server does not support annotations=maxspeed.
-  // Speed limits are inferred from intersection road classes + DEFAULT_LIMITS table.
   var url = OSRM_URL + '/' + myPos.lon + ',' + myPos.lat + ';' +
             destPos.lon + ',' + destPos.lat +
             '?steps=true&geometries=geojson&overview=full';
@@ -1291,25 +1221,17 @@ function go(isReroute) {
           street:   s.name || s.ref || s.maneuver.type,
           distM:    s.distance,
           lat:      s.maneuver.location[1],
-          lon:      s.maneuver.location[0],
-          limitKmh: guessLimitFromStep(s)
+          lon:      s.maneuver.location[0]
         };
       });
 
       stepIdx = 0; lastSpokenIdx = -1;
 
       if (routeLayer) map.removeLayer(routeLayer);
-      // Very faint full-route underlay -- just enough to show the overall
-      // path ahead without competing with the bright trimmed remainingLayer.
-      // On first load (before GPS updates arrive) this is all that shows,
-      // so we also draw a bright initial line that trimRouteDisplay will
-      // replace on the first GPS position update.
       routeLayer = L.polyline(routeCoords, {
         color: '#f5a623', weight: 4, opacity: 0.12
       }).addTo(map);
 
-      // Draw full-brightness initial route -- replaced by trimRouteDisplay
-      // on first GPS update, ensuring the route always looks vivid on load.
       if (remainingLayer) map.removeLayer(remainingLayer);
       remainingLayer = L.layerGroup([
         L.polyline(routeCoords, { color: '#f5a623', weight: 9, opacity: 0.18 }),
@@ -1325,15 +1247,9 @@ function go(isReroute) {
       g('instBar').classList.add('show');
       g('turnsToggle').classList.add('show');
       setTracking(true);
+      map.doubleClickZoom.disable();  // free up double-tap for new destination
       updateInstruction();
-      // Small delay so speakStep doesn't interrupt any still-playing utterance
       if (speechOn) setTimeout(function() { speakStep(0); }, 800);
-      // Set initial speed limit from first step
-      if (steps.length) setCurrentLimit(steps[0].limitKmh);
-      // Fetch schools near this route for zone detection (non-blocking)
-      nearbySchools = []; inSchoolZone = false; schoolZoneSpoken = false;
-      g('schoolZone').classList.remove('show');
-      fetchSchoolsNearRoute();
     })
     .catch(function(e) {
       setPill('routeDot', 'err');
@@ -1341,46 +1257,6 @@ function go(isReroute) {
       toast(e.message || 'Routing failed - check internet connection');
       console.error(e);
     });
-}
-
-// Guess a speed limit from step properties using intersection type heuristics
-function guessLimitFromStep(step) {
-  // OSRM intersection 'classes' only contains: motorway, toll, tunnel,
-  // ferry, restricted -- NOT primary/secondary/residential etc.
-  // So we use multiple signals to infer road type:
-
-  // 1. Check intersection classes for motorway/toll indicators
-  if (step.intersections && step.intersections.length) {
-    var classes = step.intersections[0].classes || [];
-    if (classes.indexOf('motorway') >= 0) return DEFAULT_LIMITS['motorway'];
-  }
-
-  // 2. Check step 'ref' field - motorways/highways have route refs (M1, A1, B52 etc)
-  var ref = (step.ref || '').toUpperCase().trim();
-  if (ref) {
-    // Australian motorway refs: M1, M2, M5, M7 etc
-    if (/^M\d/.test(ref))  return DEFAULT_LIMITS['motorway'];
-    // State highways and national highways: A1, B52 etc
-    if (/^(A|N|NH|SH|HW)\d/.test(ref)) return DEFAULT_LIMITS['trunk'];
-    // Numbered routes often primary roads
-    if (/^\d+$/.test(ref)) return DEFAULT_LIMITS['primary'];
-  }
-
-  // 3. Use speed implied by step duration vs distance as a road class proxy.
-  // If OSRM routed this step assuming a high speed, it must be a fast road.
-  var impliedSpeedKmh = (step.duration > 0)
-    ? (step.distance / step.duration) * 3.6
-    : 0;
-  if (impliedSpeedKmh >= 90) return DEFAULT_LIMITS['motorway'];
-  if (impliedSpeedKmh >= 70) return DEFAULT_LIMITS['trunk'];
-  if (impliedSpeedKmh >= 55) return DEFAULT_LIMITS['primary'];
-  if (impliedSpeedKmh >= 45) return DEFAULT_LIMITS['secondary'];
-  if (impliedSpeedKmh >= 30) return DEFAULT_LIMITS['tertiary'];
-  if (impliedSpeedKmh >= 10) return DEFAULT_LIMITS['residential'];
-  if (impliedSpeedKmh > 0)   return DEFAULT_LIMITS['living_street'];
-
-  // 4. Fallback: 50 km/h (standard Australian urban default)
-  return 50;
 }
 
 function osrmManeuver(type, mod) {
@@ -1417,12 +1293,6 @@ function navigate(lat, lon) {
          haversineM(lat, lon, steps[stepIdx].lat, steps[stepIdx].lon) < STEP_ADVANCE_METRES) {
     stepIdx++;
   }
-
-  // Update speed limit display for current step
-  if (steps[stepIdx]) setCurrentLimit(steps[stepIdx].limitKmh);
-
-  // School zone check (overrides step limit if active)
-  checkSchoolZone(lat, lon);
 
   // Trim the route line to show only the remaining portion
   trimRouteDisplay(lat, lon);
@@ -1517,7 +1387,6 @@ function showArrived() {
   g('instBar').classList.remove('show');
   g('arrivedDest').textContent = destLabel;
   g('arrivedOverlay').classList.add('show');
-  setCurrentLimit(null);
   if (speechOn) speak('You have arrived at your destination');
   g('routeVal').textContent = 'Arrived';
 }
@@ -1528,12 +1397,11 @@ function showArrived() {
 function renderTurns() {
   g('turnsStats').textContent = totalDist.toFixed(1) + ' km  ' + Math.round(totalTime) + ' min';
   g('turnsList').innerHTML = steps.map(function(s, i) {
-    var limitStr = s.limitKmh ? '  |  ' + s.limitKmh + ' km/h limit' : '';
     return '<div class="turn-row" id="tr' + i + '" onclick="zoomStep(' + i + ')">' +
       '<div class="turn-arrow">' + s.arrow + '</div>' +
       '<div class="turn-info">' +
         '<div class="turn-street">' + esc(s.street) + '</div>' +
-        '<div class="turn-detail">' + actionLabel(s) + limitStr + '</div>' +
+        '<div class="turn-detail">' + actionLabel(s) + '</div>' +
       '</div>' +
       '<div class="turn-dist-col">' +
         (s.distM >= 1000 ? (s.distM/1000).toFixed(1)+'km' : Math.round(s.distM)+'m') +
@@ -1606,6 +1474,78 @@ function speakStep(i) {
   else if (s.action === 'continue') txt = 'Continue on ' + s.street + ' for ' + fmtDist(s.distM);
   else                              txt = cap(s.action) + ' onto ' + s.street;
   speak(txt);
+}
+
+// Called on single map tap during navigation -- repeats next turn with distance
+function speakCurrentInstruction() {
+  var s = steps[stepIdx];
+  if (!s) return;
+  var txt;
+  if (s.action === 'arrive') {
+    txt = 'You have arrived at your destination';
+  } else if (myPos) {
+    var dM  = haversineM(myPos.lat, myPos.lon, s.lat, s.lon);
+    var dist = dM >= 1000
+      ? 'In ' + (dM / 1000).toFixed(1) + ' kilometres'
+      : 'In ' + Math.round(dM) + ' metres';
+    if (s.action === 'depart') {
+      txt = 'Head on ' + s.street;
+    } else if (s.action === 'continue') {
+      txt = dist + ', continue on ' + s.street;
+    } else {
+      txt = dist + ', ' + s.action + ' onto ' + s.street;
+    }
+  } else {
+    speakStep(stepIdx);
+    return;
+  }
+  speak(txt);
+}
+
+// Called on double tap during navigation -- voice prompt to start a new route
+function offerNewDestination() {
+  if (!speechOn) {
+    // If speech is off just open the sheet directly
+    clearAll();
+    openSheet();
+    return;
+  }
+  speakThen('Would you like to navigate to a new destination? Say yes or no.', function() {
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { clearAll(); openSheet(); return; }
+
+    var rec = new SR();
+    rec.lang = selectedVoice ? selectedVoice.lang : 'en-AU';
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.maxAlternatives = 3;
+
+    rec.onresult = function(e) {
+      var heard = '';
+      for (var i = 0; i < e.results[0].length; i++) {
+        heard = e.results[0][i].transcript.trim().toLowerCase();
+        if (isYes(heard) || isNo(heard)) break;
+      }
+      if (isYes(heard)) {
+        speakThen('What is your destination?', function() {
+          clearAll();
+          openSheet();
+          // Trigger voice input automatically after sheet opens
+          setTimeout(startVoice, 400);
+        });
+      } else {
+        speak('Continuing current route');
+      }
+    };
+
+    rec.onerror = function() {
+      // On recognition error just open the sheet
+      clearAll();
+      openSheet();
+    };
+
+    try { rec.start(); } catch(e) { clearAll(); openSheet(); }
+  });
 }
 
 // Tap the speaker button to verify audio is working on your device
@@ -1732,13 +1672,10 @@ function clearAll() {
   g('handleDest').textContent = '';
   g('handleText').textContent = 'Set destination';
   g('suggestions').innerHTML = '';
-  g('limitSign').classList.remove('show');
-  g('speedCircle').classList.remove('over');
-  g('schoolZone').classList.remove('show');
-  nearbySchools = []; inSchoolZone = false; schoolZoneSpoken = false;
   sugResults = [];
 
   if (myPos && tracking) map.setView([myPos.lat, myPos.lon], 15);
+  if (map) map.doubleClickZoom.enable();
   g('voiceConfirmPanel').classList.remove('show');
   if (voiceConfirmRec) { try { voiceConfirmRec.stop(); } catch(e) {} voiceConfirmRec = null; }
   if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -1894,118 +1831,6 @@ function startAudioWake() {
     setInterval(playSilence, 25000);
   } catch(e) {
     console.warn('Web Audio wake failed:', e.message);
-  }
-}
-
-// =============================================================
-// SCHOOL ZONE DETECTION
-// After routing, fetch schools near the route from Overpass.
-// On each GPS update, check if we are within SCHOOL_RADIUS_M
-// of any school during Australian school hours (weekdays only).
-//
-// IMPORTANT: This is best-effort. It depends on schools being
-// tagged in OpenStreetMap for your area. Coverage is generally
-// good in Australian cities but may be incomplete in some areas.
-// Do NOT rely solely on this for school zone compliance.
-// Always observe posted signs.
-// =============================================================
-var SCHOOL_RADIUS_M  = 150;  // metres from school to trigger warning
-var SCHOOL_HOURS     = [     // [startHour, startMin, endHour, endMin] AEST (UTC+10)
-  [8, 0,  9, 30],            // morning zone
-  [14, 30, 16, 0]            // afternoon zone
-];
-
-function fetchSchoolsNearRoute() {
-  if (!routeCoords || routeCoords.length === 0) return;
-
-  // Build bounding box around the route with a small buffer
-  var lats = routeCoords.map(function(c) { return c[0]; });
-  var lons = routeCoords.map(function(c) { return c[1]; });
-  var s = Math.min.apply(null, lats) - 0.005;
-  var n = Math.max.apply(null, lats) + 0.005;
-  var w = Math.min.apply(null, lons) - 0.005;
-  var e = Math.max.apply(null, lons) + 0.005;
-
-  var q = '[out:json][timeout:20];' +
-          '(node["amenity"="school"](' + s + ',' + w + ',' + n + ',' + e + ');' +
-          'way["amenity"="school"](' + s + ',' + w + ',' + n + ',' + e + ');' +
-          'relation["amenity"="school"](' + s + ',' + w + ',' + n + ',' + e + '););' +
-          'out center;';
-
-  fetch(OVERPASS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'data=' + encodeURIComponent(q)
-  })
-  .then(function(res) { return res.json(); })
-  .then(function(data) {
-    nearbySchools = (data.elements || []).map(function(el) {
-      var lat = el.lat || (el.center && el.center.lat);
-      var lon = el.lon || (el.center && el.center.lon);
-      return { lat: lat, lon: lon, name: (el.tags && el.tags.name) || 'School' };
-    }).filter(function(s) { return s.lat && s.lon; });
-    console.log('School zones loaded: ' + nearbySchools.length + ' schools near route');
-  })
-  .catch(function(e) {
-    console.warn('School zone fetch failed (non-critical):', e.message);
-  });
-}
-
-function checkSchoolZone(lat, lon) {
-  if (!nearbySchools.length) {
-    if (inSchoolZone) setSchoolZone(false);
-    return;
-  }
-
-  // Check if current time is within school zone hours (using local time)
-  var now     = new Date();
-  var day     = now.getDay();           // 0=Sun, 6=Sat
-  var hh      = now.getHours();
-  var mm      = now.getMinutes();
-  var isWeekday = day >= 1 && day <= 5;
-  var inHours = false;
-
-  if (isWeekday) {
-    for (var i = 0; i < SCHOOL_HOURS.length; i++) {
-      var sh = SCHOOL_HOURS[i];
-      var startMins = sh[0] * 60 + sh[1];
-      var endMins   = sh[2] * 60 + sh[3];
-      var nowMins   = hh * 60 + mm;
-      if (nowMins >= startMins && nowMins < endMins) { inHours = true; break; }
-    }
-  }
-
-  if (!inHours) {
-    if (inSchoolZone) setSchoolZone(false);
-    return;
-  }
-
-  // Check proximity to any school
-  var near = false;
-  for (var j = 0; j < nearbySchools.length; j++) {
-    if (haversineM(lat, lon, nearbySchools[j].lat, nearbySchools[j].lon) < SCHOOL_RADIUS_M) {
-      near = true; break;
-    }
-  }
-  setSchoolZone(near);
-}
-
-function setSchoolZone(active) {
-  if (active === inSchoolZone) return;
-  inSchoolZone = active;
-  g('schoolZone').classList.toggle('show', active);
-
-  if (active) {
-    // Override speed limit display to 40 while in zone
-    setCurrentLimit(40);
-    if (speechOn && !schoolZoneSpoken) {
-      speak('Warning, school zone ahead. Speed limit 40 kilometres per hour.');
-      schoolZoneSpoken = true;
-    }
-  } else {
-    schoolZoneSpoken = false;
-    // Restore the step's normal limit
-    if (steps[stepIdx]) setCurrentLimit(steps[stepIdx].limitKmh);
   }
 }
 

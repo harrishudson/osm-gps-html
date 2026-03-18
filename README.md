@@ -23,15 +23,13 @@ experiment that turned into something genuinely useful.
 - **Speech synthesis** for all navigation instructions using the device's
   built-in voices
 - **Speed display** showing current speed in km/h
-- **Speed limit display** based on road type, highlighted red when exceeded
-- **School zone detection** -- queries OpenStreetMap for schools near the route
-  and warns during Australian school hours (weekdays 8:00-9:30am and
-  2:30-4:00pm local time)
 - **Off-route recalculation** -- automatically reroutes if you drift more than
   80 metres from the planned route
 - **Route line trimming** -- the route line consumes behind you as you drive,
   like a real GPS
 - **Turn list drawer** showing all manoeuvres with distances
+- **Map tap gestures** -- single tap repeats the next instruction; double tap
+  prompts for a new destination (during active navigation)
 - **Screen stay-awake** -- four layered methods (WakeLock API, silent video
   loop, DeviceOrientation subscription, Web Audio keep-alive) keep the screen
   on while navigating, including on older iPhones
@@ -74,7 +72,7 @@ calculate the route.
 
 - The **top strip** shows the next manoeuvre: arrow, street name, and
   distance. It slides down when a route is active and hides when you clear.
-- **Spoken instructions** announce upcoming turns at ~600m and again at ~80m.
+- **Spoken instructions** announce upcoming turns at ~600m and again at ~90m.
   A "Calculating route to..." announcement plays immediately when you tap Go
   (this is also what warms up the audio on iPhone -- if you hear it, speech
   is working).
@@ -83,6 +81,13 @@ calculate the route.
   remains visible so you can see the overall path ahead.
 - If you drift more than 80 metres off the route, it automatically
   recalculates from your current position.
+- **Single tap** anywhere on the map repeats the next turn instruction with
+  distance -- useful when you missed an announcement while driving.
+- **Double tap** on the map during navigation prompts "Would you like to
+  navigate to a new destination?" via voice. Say "yes" to clear the current
+  route and open the destination search with voice input ready, or "no" to
+  continue. Note: double-tap zoom is disabled while a route is active (it is
+  restored when you clear the route).
 - Tap **≡** (bottom-left) to open the full turn-by-turn list. The speed
   widget and re-centre button hide while the list is open.
 - Tap **◎** (bottom-left) to re-centre the map on your GPS position. The map
@@ -98,20 +103,7 @@ calculate the route.
 
 ### Speed display
 
-The circle at the bottom-left shows your current speed in km/h. Below it, a
-round red-bordered sign shows the posted speed limit for the current road
-segment. The limit is inferred from road type using three signals: the OSRM
-intersection class, the step route reference (e.g. M1, A1), and the implied
-speed from OSRM's own routing model. The circle border flashes red if you
-exceed the limit by more than 3 km/h (adjustable in config).
-
-### School zones
-
-After a route is calculated, nearby schools are fetched from OpenStreetMap.
-On weekdays between 8:00-9:30am and 2:30-4:00pm local time, a yellow banner
-appears and the speed limit display switches to 40 km/h if you come within
-150 metres of a school. A spoken warning plays once per zone entry. This is
-best-effort only -- see the School zone detection section for limitations.
+The circle at the bottom-left shows your current speed in km/h.
 
 ### Audio test button
 
@@ -122,10 +114,6 @@ audio session, which is required before navigation speech will work.
 
 ### Limitations to be aware of
 
-- **Speed limits** are inferred from road class using Australian default
-  values. They are not read from live signed data and will be wrong on roads
-  where the actual limit differs from the class default. Always observe
-  posted signs.
 - **Routing** uses the public OSRM demo server which is intended for testing,
   not production use. For a long road trip it will generally work well, but
   it can be slow or unavailable under heavy load.
@@ -143,9 +131,9 @@ Download `gps.html` and open it in Chrome, Edge, or Safari. Grant location
 and microphone permissions when prompted.
 
     Note: A live demo is not possible. The APIs used (OSRM routing, Photon
-    geocoding, Nominatim, OpenStreetMap tiles, Overpass) all have usage
-    policies that prohibit embedding them in publicly hosted apps at scale.
-    You must run this file locally or on your own server for personal use.
+    geocoding, Nominatim, OpenStreetMap tiles) all have usage policies that
+    prohibit embedding them in publicly hosted apps at scale. You must run
+    this file locally or on your own server for personal use.
 
 ### Option 2 -- Serve from a web server
 
@@ -199,7 +187,7 @@ Quick self-signed HTTPS server for local use:
 
 Nominatim (the OpenStreetMap geocoder) asks that apps identify themselves so
 their ops team can contact you if your usage causes issues. Replace the
-placeholder on **line 429** of `gps.html`:
+placeholder on **line 372** of `gps.html`:
 
     var NOMINATIM_EMAIL = 'osmgps-app@example.com';
 
@@ -212,10 +200,10 @@ Change this to your own address before using or sharing the file.
 
 ## Configuration
 
-All tuneable values are in the CONFIGURATION block at **line 422** of
+All tuneable values are in the CONFIGURATION block at **line 365** of
 `gps.html`. Plain comments explain each one.
 
-### Navigation tolerances (lines 436-451)
+### Navigation tolerances (lines 375-390)
 
 The defaults are tuned for **driving**. Reduce them for walking or cycling.
 
@@ -223,9 +211,8 @@ The defaults are tuned for **driving**. Reduce them for walking or cycling.
 |----------|---------|---------|---------|--------------|
 | `REROUTE_METRES` | 80 | 80-100 | 30-50 | Metres off-route before recalculation |
 | `SPEAK_WARN_METRES` | 600 | 500-800 | 150-250 | Early turn announcement distance |
-| `SPEAK_TURN_METRES` | 80 | 60-100 | 15-30 | "Turn now" announcement distance |
+| `SPEAK_TURN_METRES` | 90 | 70-100 | 15-30 | "Turn now" announcement distance |
 | `STEP_ADVANCE_METRES` | 60 | 50-80 | 15-25 | Distance at which a turn is considered passed |
-| `SPEED_GRACE_KMH` | 3 | 3-5 | n/a | Grace above speed limit before display turns red |
 
 Example walking mode:
 
@@ -238,10 +225,8 @@ Example walking mode:
 
 | Variable | Line | Default | What it does |
 |----------|------|---------|--------------|
-| `NOMINATIM_EMAIL` | 429 | (placeholder) | Your email for Nominatim identification |
-| `SPEED_GRACE_KMH` | 433 | 3 | Grace km/h above limit before speed display turns red |
-| `REROUTE_COOLDOWN_MS` | 439 | 15000 | Minimum ms between successive re-routes |
-| `SCHOOL_RADIUS_M` | 1903 | 150 | Metres from a school to trigger zone warning |
+| `NOMINATIM_EMAIL` | 372 | (placeholder) | Your email for Nominatim identification |
+| `REROUTE_COOLDOWN_MS` | 378 | 15000 | Minimum ms between successive re-routes |
 
 ---
 
@@ -255,7 +240,6 @@ All APIs are free and open. None require an API key for personal use.
 | [Photon (Komoot)](https://photon.komoot.io) | Primary geocoder (address search) | Free, open, OSM-backed |
 | [Nominatim (OSM)](https://nominatim.openstreetmap.org) | Fallback geocoder | Max 1 req/sec; identify your app with email param |
 | [OpenStreetMap tiles](https://wiki.openstreetmap.org/wiki/Tile_usage_policy) | Map display | Personal/low-volume use only |
-| [Overpass API](https://overpass-api.de) | School zone detection | Reasonable use |
 
 For anything beyond personal use, self-host OSRM and switch to a commercial
 tile provider such as Stadia Maps or MapTiler instead of the OSM tile CDN.
@@ -266,8 +250,8 @@ tile provider such as Stadia Maps or MapTiler instead of the OSM tile CDN.
 
 | Browser | Routing | Voice input | Voice output | GPS | Screen wake |
 |---------|---------|-------------|--------------|-----|-------------|
-| Safari (iOS 16.4+) | Yes | Yes | Yes | Yes | Video + DeviceOrientation + Web Audio |
-| Chrome (iOS 17.4+) | Yes | Yes | Yes | Yes | Video + DeviceOrientation + Web Audio |
+| Safari (iOS 16.4+) | Yes | Yes | Yes | Yes | Video + Orientation + Web Audio |
+| Chrome (iOS 17.4+) | Yes | Yes | Yes | Yes | Video + Orientation + Web Audio |
 | Chrome (Android) | Yes | Yes (HTTPS) | Yes | Yes | WakeLock API |
 | Chrome (desktop) | Yes | Yes | Yes | Yes | WakeLock API |
 | Safari (macOS) | Yes | Yes | Yes | Yes | WakeLock API |
@@ -286,34 +270,8 @@ The map occupies the full screen. Controls are overlaid:
 - **Top**: turn instruction strip (slides down when navigating)
 - **Top-right**: GPS accuracy pill and route summary pill
 - **Bottom-right**: map zoom [+][−] buttons (above the sheet handle)
-- **Bottom-left**: speed display, speed limit sign, re-centre button,
-  turn list toggle (≡)
+- **Bottom-left**: speed display, re-centre button, turn list toggle (≡)
 - **Bottom**: destination sheet (tap the handle bar to expand)
-
----
-
-## School zone detection
-
-After a route is calculated, the app queries Overpass API for schools within
-the route bounding box. During Australian school hours on weekdays, if GPS
-position comes within 150 metres of a tagged school, a yellow banner appears,
-the speed limit display switches to 40 km/h, and a spoken warning plays.
-
-**Limitations:**
-
-- Coverage depends on OpenStreetMap data completeness for your area.
-- Times use the device's local clock -- ensure your time zone is correct.
-- Best-effort only. Always obey posted signs. The author accepts no liability
-  for speed limit violations.
-
----
-
-## APIs used for school zones
-
-School zone data is fetched from Overpass API using the `amenity=school` tag.
-The school hours (8:00-9:30am and 2:30-4:00pm weekdays) reflect standard
-Australian state school zone enforcement times and may differ in some states
-or for private schools. Adjust `SCHOOL_HOURS` in the source if needed.
 
 ---
 
@@ -346,10 +304,7 @@ application can be built end-to-end through AI-assisted development.
 ---
 
 ## Contributing
-
-Pull Requests are not currently being accepted. If you would like to request
-a change, or find a bug, please raise an issue.
+Pull Requests are not currently being accepted.  If you would like to request a change, or find a bug, please raise an issue.
 
 ## Donate
-
 [https://harrishudson.com/#sponsor](https://harrishudson.com/#sponsor)
